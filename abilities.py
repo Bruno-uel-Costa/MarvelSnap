@@ -1,15 +1,17 @@
-# Arquivo: abilities.py
-import random
-from typing import Optional, List, Dict, Any # Added for type hinting
-from deck_database import ULTRON_STONES
-from card import Card
-from deck_factory import create_card_from_prepared_data # Added for Infinity Ultron
+# abilities.py
+from __future__ import annotations # Add this as the first line
 
-def ability_placeholder(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None):
+import random
+from typing import Optional, List, Dict, Any
+from deck_database import ULTRON_STONES
+# from card import Card # Remove or comment out this line
+from deck_factory import create_card_from_prepared_data
+
+def ability_placeholder(game_state, card: 'Card'): # Signature changed
     """Uma função vazia para cartas sem habilidade ou cuja habilidade não implementamos ainda."""
     pass
 
-def ability_blade(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None):
+def ability_blade(game_state, card: 'Card'): # Signature changed
     """Ao Revelar: Descarta a carta mais à direita da sua mão."""
     hand = game_state.player.hand
     if hand:
@@ -17,7 +19,7 @@ def ability_blade(game_state, card, resolved_outcomes_list: Optional[List[Dict[s
         game_state.player.move_card_to_discard(card_to_discard, simulation_mode=game_state.simulation_mode)
 
 
-def ability_corvus_glaive(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # card is Corvus instance
+def ability_corvus_glaive(game_state, card: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
     """Ao Revelar: Descarta 2 cartas da sua mão para ganhar +1 de Energia Máxima."""
     relevant_outcome = None
     if resolved_outcomes_list:
@@ -59,7 +61,7 @@ def ability_corvus_glaive(game_state, card, resolved_outcomes_list: Optional[Lis
     if not game_state.simulation_mode:
         print("CORVUS: +1 de Energia Máxima concedido.")
 
-def ability_jubilee(game_state, card_instance, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # card_instance is Jubilee
+def ability_jubilee(game_state, card_instance: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
     """On Reveal: Add the top card of your deck to this location."""
     relevant_outcome = None
     if resolved_outcomes_list:
@@ -128,7 +130,7 @@ def ability_jubilee(game_state, card_instance, resolved_outcomes_list: Optional[
         game_state.player.deck.insert(0, pulled_card_instance)
 
 
-def ability_ghost_rider(game_state, card_instance, resolved_outcomes_list=None): # card_instance is Ghost Rider
+def ability_ghost_rider(game_state, card_instance: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
     """On Reveal: Bring back one of your discarded cards to this location."""
     relevant_outcome = None
     if resolved_outcomes_list:
@@ -196,7 +198,7 @@ def ability_ghost_rider(game_state, card_instance, resolved_outcomes_list=None):
             print(f"ERRO GHOST RIDER: Não foi possível encontrar o local da carta Ghost Rider ({card_instance.name}). Card {card_to_resurrect_instance.name} retorna ao descarte.")
         game_state.player.discard_pile.append(card_to_resurrect_instance) # Return to discard
 
-def ability_gambit(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None):
+def ability_gambit(game_state, card: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
     """Ao Revelar: Descarta uma carta da sua mão para destruir uma carta inimiga aleatória."""
     # TODO: Adapt Gambit for pre-resolved outcomes (which card is discarded, which enemy is destroyed) if needed.
     if game_state.player.hand:
@@ -208,7 +210,7 @@ def ability_gambit(game_state, card, resolved_outcomes_list: Optional[List[Dict[
         if not game_state.simulation_mode:
             print("GAMBIT: Habilidade falhou (sem cartas na mão para descartar).")
 
-def ability_hela(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # 'card' is Hela instance
+def ability_hela(game_state, card: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
     """Ao Revelar: Ressuscita cartas de custos diferentes da pilha de descarte."""
     # TODO: Adapt Hela for pre-resolved outcomes (which card per cost is chosen) if needed.
     snapshot_discard_pile = list(game_state.player.discard_pile)
@@ -268,13 +270,14 @@ def ability_hela(game_state, card, resolved_outcomes_list: Optional[List[Dict[st
             if not game_state.simulation_mode:
                 print(f"HELA: Nenhum local com espaço disponível para {c_res.name}.")
 
-def ability_odin(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # 'card' is the Odin instance
+def ability_odin(game_state, card: 'Card'): # Signature changed
     """Ao Revelar: Repete as habilidades 'Ao Revelar' de suas outras cartas aqui."""
-    # Odin's re-triggering doesn't involve new RNG from Odin itself, but re-triggers other abilities
-    # which might then use their own RNG or their part of resolved_outcomes_list.
+    # Odin's re-triggering doesn't involve new RNG from Odin itself.
+    # It re-triggers other abilities, which will correctly receive the
+    # resolved_outcomes_list from the current process_resolution_queue context.
     odin_location_index = -1
-    for i, loc_list in enumerate(game_state.locations): # Renamed loc to loc_list
-        if card in loc_list: # 'card' is the Odin instance
+    for i, loc_list in enumerate(game_state.locations):
+        if card in loc_list:
             odin_location_index = i
             break
 
@@ -303,7 +306,7 @@ def ability_odin(game_state, card, resolved_outcomes_list: Optional[List[Dict[st
         if not game_state.simulation_mode:
             print(f"ERRO ODIN: Não foi possível encontrar o local da carta Odin ({card.name}).")
 
-def ability_blink(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # 'card' is the Blink instance
+def ability_blink(game_state, card: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
     """
     On Reveal: Swap the last card you played with a card that costs more from your deck.
     """
@@ -370,7 +373,7 @@ def ability_blink(game_state, card, resolved_outcomes_list: Optional[List[Dict[s
     if not game_state.simulation_mode:
         print(f"BLINK: Returned {target_card_played_instance.name} to deck and shuffled.")
 
-def ability_infinity_ultron(game_state, card_instance, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # card_instance is Ultron
+def ability_infinity_ultron(game_state, card_instance: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
     """On Reveal: Add 2 of Ultron’s Stones to your hand."""
     relevant_outcome = None
     if resolved_outcomes_list:
@@ -412,7 +415,7 @@ def ability_infinity_ultron(game_state, card_instance, resolved_outcomes_list: O
     elif not game_state.simulation_mode:
         print("INFINITY_ULTRON: No stones added to hand.")
 
-def ability_legion(game_state, card_instance, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # card_instance is Legion
+def ability_legion(game_state, card_instance: 'Card'): # Signature changed
     """
     On Reveal: Replace each other location with this one.
     """
