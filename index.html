@@ -39,11 +39,9 @@
         </div>
         <hr>
 
-        <!-- Card Selection Area (Generic for all zones) -->
         <div>
             <label for="cardSelector">Selecionar Carta (ID):</label>
             <input type="text" id="cardIdInput" placeholder="Ex: 1 (Blade)">
-            <!-- Placeholder for a dropdown or better selector later -->
         </div>
         <br>
 
@@ -80,7 +78,7 @@
         </div>
         <hr>
 
-        <button id="analyzeButton">Analisar Turno</button>
+        <button id="analyzeButton">Analisar Turno (Estado Atual)</button>
 
         <div id="resultsArea">
             <h3>Resultados da Análise:</h3>
@@ -90,7 +88,195 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
-    <!-- We will create script.js in the next step -->
+    <script>
+// script.js (embedded in index.html for this subtask)
+
+// --- Local Game State ---
+const localGameState = {
+    hand_ids: [],
+    discard_ids: [],
+    location1_ids: [],
+    location2_ids: [],
+    location3_ids: [],
+    // Deck IDs are not explicitly managed on this simplified frontend.
+    // The backend will know the full deck from start_game and then we'll tell it
+    // which cards are in hand/discard/locations for rehydration.
+    // Play history is also managed by backend primarily.
+};
+
+// --- Card Data (for display purposes) ---
+const cardManifest = {
+    1: { name: 'Blade' }, 2: { name: 'Gambit' }, 3: { name: 'Corvus Glaive' },
+    4: { name: 'Jubilee' }, 5: { name: 'Ghost Rider' }, 6: { name: 'Blink' },
+    7: { name: 'Legion' }, 8: { name: 'Infinity Ultron' }, 9: { name: 'Gorr' },
+    10: { name: 'Hela' }, 11: { name: 'Odin' }, 12: { name: 'The Infinaut' },
+    101: { name: 'Mind Stone' }, 102: { name: 'Power Stone' }, 103: { name: 'Reality Stone' },
+    104: { name: 'Soul Stone' }, 105: { name: 'Space Stone' }, 106: { name: 'Time Stone' }
+};
+
+// --- UI Update Functions ---
+function getZoneName(zoneId) {
+    if (zoneId === 'hand') return 'Mão';
+    if (zoneId === 'location1') return 'Local 1';
+    if (zoneId === 'location2') return 'Local 2';
+    if (zoneId === 'location3') return 'Local 3';
+    if (zoneId === 'discard') return 'Descarte';
+    return 'Zone';
+}
+
+function renderZone(zoneId) {
+    const cardListDiv = document.getElementById(`${zoneId}CardList`);
+    const countSpan = document.getElementById(`${zoneId}Count`);
+    if (!cardListDiv || !countSpan) return;
+
+    cardListDiv.innerHTML = '';
+    const ids_key = `${zoneId}_ids`;
+
+    localGameState[ids_key].forEach((cardId, index) => {
+        const cardName = cardManifest[cardId] ? cardManifest[cardId].name : `ID Desconhecido: ${cardId}`;
+        const cardItem = document.createElement('span');
+        cardItem.className = 'card-item';
+        cardItem.textContent = cardName;
+
+        const removeButton = document.createElement('button');
+        removeButton.textContent = 'x';
+        removeButton.style.marginLeft = '5px';
+        removeButton.style.cursor = 'pointer';
+        removeButton.onclick = () => removeCardFromZone(zoneId, index);
+        cardItem.appendChild(removeButton);
+
+        cardListDiv.appendChild(cardItem);
+    });
+    countSpan.textContent = localGameState[ids_key].length;
+}
+
+function addCardToZone(zoneId) {
+    const cardIdInput = document.getElementById('cardIdInput');
+    const cardId = parseInt(cardIdInput.value);
+
+    if (isNaN(cardId) || !cardManifest[cardId]) {
+        alert('Por favor, insira um ID de carta válido.');
+        return;
+    }
+
+    const ids_key = `${zoneId}_ids`;
+    const zoneName = getZoneName(zoneId);
+
+    if (zoneId.startsWith('location') && localGameState[ids_key].length >= 4) {
+        alert(`O ${zoneName} já tem 4 cartas.`);
+        return;
+    }
+
+    localGameState[ids_key].push(cardId);
+    renderZone(zoneId);
+    cardIdInput.value = '';
+}
+
+function removeCardFromZone(zoneId, cardIndexInZone) {
+    const ids_key = `${zoneId}_ids`;
+    if (cardIndexInZone >= 0 && cardIndexInZone < localGameState[ids_key].length) {
+        localGameState[ids_key].splice(cardIndexInZone, 1);
+        renderZone(zoneId);
+    }
+}
+
+// --- Event Listener for Analyze Button ---
+// This button will now use the /api/get_next_turn_analysis endpoint.
+// Other buttons for /api/start_game etc. would be added if needed by UI flow.
+document.getElementById('analyzeButton').addEventListener('click', async () => {
+    const resultsOutputDiv = document.getElementById('analysisResultsOutput');
+    resultsOutputDiv.innerHTML = '<p>Analisando... Por favor, aguarde.</p>';
+
+    const currentTurn = parseInt(document.getElementById('currentTurn').value);
+    const currentEnergy = parseInt(document.getElementById('currentEnergy').value);
+    const maxEnergy = parseInt(document.getElementById('maxEnergy').value);
+
+    if (isNaN(currentTurn) || isNaN(currentEnergy) || isNaN(maxEnergy)) {
+        resultsOutputDiv.innerHTML = '<p style="color: red;">Erro: Turno ou Energia inválidos.</p>';
+        return;
+    }
+
+    // Construct the current_game_state payload based on UI inputs
+    const current_game_state_payload = {
+        turn: currentTurn,
+        current_energy: currentEnergy,
+        max_energy: maxEnergy,
+        hand_ids: localGameState.hand_ids,
+        discard_ids: localGameState.discard_ids,
+        // Deck IDs are not sent from this basic UI; backend GameState will have its own default
+        // and then filter it based on known cards in hand/discard/locations when rehydrating.
+        // For /api/get_next_turn_analysis, the backend needs a complete deck_ids list to be accurate.
+        // This is a known simplification in this UI. For accurate analysis, deck state is crucial.
+        // We will let the backend initialize its default deck and then filter.
+        deck_ids: [], // Sending empty, backend will use its default then filter.
+                      // Or, for more accuracy, UI would need to manage/send deck state.
+        locations: [
+            localGameState.location1_ids,
+            localGameState.location2_ids,
+            localGameState.location3_ids
+        ],
+        play_history_ids: [] // Play history is primarily managed by backend logic based on actions.
+                             // For a simple "analyze current state", it might be empty or provided if relevant.
+    };
+
+    const payload = {
+        current_game_state: current_game_state_payload
+        // 'player_actions' and 'resolved_random_outcomes' are not needed for get_next_turn_analysis
+    };
+
+    try {
+        // MODIFIED FETCH URL
+        const response = await fetch('http://127.0.0.1:5001/api/get_next_turn_analysis', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: "Erro desconhecido ao processar resposta do servidor." }));
+            throw new Error(`Erro do servidor: ${response.status} ${response.statusText}. Detalhes: ${errorData.detail || 'N/A'}`);
+        }
+
+        const resultsData = await response.json();
+        // The endpoint /api/get_next_turn_analysis returns { "top_10_outcomes": [...] }
+        displayResults(resultsData.top_10_outcomes);
+
+    } catch (error) {
+        console.error('Erro ao analisar turno:', error);
+        resultsOutputDiv.innerHTML = `<p style="color: red;">Falha ao buscar análise: ${error.message}</p>`;
+    }
+});
+
+function displayResults(results) {
+    const resultsOutputDiv = document.getElementById('analysisResultsOutput');
+    resultsOutputDiv.innerHTML = '';
+
+    if (!results || results.length === 0) {
+        resultsOutputDiv.innerHTML = '<p>Nenhum resultado de análise retornado ou nenhuma jogada possível.</p>';
+        return;
+    }
+
+    const ul = document.createElement('ul');
+    results.forEach((result, index) => {
+        const li = document.createElement('li');
+        const probPercent = (result.prob * 100).toFixed(2);
+        const outcomeStr = `L0: ${result.outcome[0]}, L1: ${result.outcome[1]}, L2: ${result.outcome[2]}`;
+        li.textContent = `${index + 1}. Prob: ${probPercent}% | Resultado: (${outcomeStr}) | Ação Sugerida: ${result.action}`;
+        ul.appendChild(li);
+    });
+    resultsOutputDiv.appendChild(ul);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    renderZone('hand');
+    renderZone('location1');
+    renderZone('location2');
+    renderZone('location3');
+    renderZone('discard');
+});
+
+    </script>
 </body>
 </html>
