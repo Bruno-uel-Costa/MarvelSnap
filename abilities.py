@@ -5,7 +5,7 @@ import random
 from typing import Optional, List, Dict, Any
 from deck_database import ULTRON_STONES
 # from card import Card # Remove or comment out this line
-from deck_factory import create_card_from_prepared_data
+# from deck_factory import create_card_from_prepared_data # REMOVED global import
 
 def ability_placeholder(game_state, card: 'Card'): # Signature changed
     """Uma função vazia para cartas sem habilidade ou cuja habilidade não implementamos ainda."""
@@ -61,8 +61,9 @@ def ability_corvus_glaive(game_state, card: 'Card', resolved_outcomes_list: Opti
     if not game_state.simulation_mode:
         print("CORVUS: +1 de Energia Máxima concedido.")
 
-def ability_jubilee(game_state, card_instance: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
+def ability_jubilee(game_state, card_instance: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # card_instance is Jubilee
     """On Reveal: Add the top card of your deck to this location."""
+
     relevant_outcome = None
     if resolved_outcomes_list:
         for outcome_data in resolved_outcomes_list:
@@ -74,31 +75,33 @@ def ability_jubilee(game_state, card_instance: 'Card', resolved_outcomes_list: O
     pulled_card_instance = None
 
     if relevant_outcome and 'pulled_card_id' in relevant_outcome:
-        pulled_card_id = relevant_outcome['pulled_card_id']
+        pulled_card_id_from_user = relevant_outcome['pulled_card_id']
         if not game_state.simulation_mode:
-            print(f"JUBILEE: Using pre-resolved pulled card ID: {pulled_card_id}")
-        found_in_deck = False
+            print(f"JUBILEE: Using pre-resolved pulled card ID: {pulled_card_id_from_user}")
+        found_in_deck_idx = -1
         for i, card_in_deck in enumerate(game_state.player.deck):
-            if card_in_deck.id == pulled_card_id:
-                pulled_card_instance = game_state.player.deck.pop(i)
-                found_in_deck = True
+            if card_in_deck.id == pulled_card_id_from_user:
+                found_in_deck_idx = i
                 break
-        if not found_in_deck and not game_state.simulation_mode:
-            print(f"JUBILEE_WARNING: Pre-resolved pulled card ID {pulled_card_id} not found in deck. Falling back to RNG.")
-            pulled_card_instance = None # Force RNG path
+        if found_in_deck_idx != -1:
+            pulled_card_instance = game_state.player.deck.pop(found_in_deck_idx)
+        else: # ID not found in deck
+            if not game_state.simulation_mode:
+                print(f"JUBILEE_WARNING: Pre-resolved pulled card ID {pulled_card_id_from_user} not found in deck. Falling back to RNG (top of deck).")
+            # Fallback by letting pulled_card_instance remain None
 
-    if not pulled_card_instance:
+    if not pulled_card_instance: # Fallback to RNG if no pre-resolved outcome, or if specified ID not in deck
         if not game_state.player.deck:
             if not game_state.simulation_mode:
-                print("JUBILEE: Baralho vazio, nenhuma carta para puxar (RNG path).")
+                print("JUBILEE: Baralho vazio (RNG path).")
             return
         if not game_state.simulation_mode:
-            print("JUBILEE: No pre-resolved outcome or ID not in deck. Pulling card from top of deck (RNG path).")
+            print("JUBILEE: Pulling card from top of deck (RNG path).")
         pulled_card_instance = game_state.player.deck.pop(0)
 
-    if not pulled_card_instance:
+    if not pulled_card_instance: # Should only happen if deck was empty and RNG path was taken.
         if not game_state.simulation_mode:
-            print("JUBILEE_ERROR: Failed to select a card to pull.")
+            print("JUBILEE_ERROR: Failed to select/find a card to pull.")
         return
 
     if not game_state.simulation_mode:
@@ -106,67 +109,64 @@ def ability_jubilee(game_state, card_instance: 'Card', resolved_outcomes_list: O
 
     location_of_jubilee = None
     for loc_list in game_state.locations:
-        if card_instance in loc_list:
+        if card_instance in loc_list: # card_instance is the Jubilee card itself
             location_of_jubilee = loc_list
             break
 
     if location_of_jubilee is not None:
-        if len(location_of_jubilee) < 4:
+        if len(location_of_jubilee) < 4: # Check if location has space
             location_of_jubilee.append(pulled_card_instance)
             if not game_state.simulation_mode:
                 print(f"JUBILEE: {pulled_card_instance.name} adicionado(a) ao local de Jubilee.")
             if hasattr(pulled_card_instance, 'ability_function') and callable(pulled_card_instance.ability_function):
                 game_state.resolution_queue.insert(0, (pulled_card_instance.ability_function, pulled_card_instance))
-                if not game_state.simulation_mode:
-                    print(f"JUBILEE: Habilidade de {pulled_card_instance.name} adicionada ao início da fila de resolução.")
-        else:
+        else: # Location is full
             if not game_state.simulation_mode:
-                print(f"JUBILEE: Local de Jubilee (onde {card_instance.name} está) está cheio. {pulled_card_instance.name} não pode ser adicionado.")
-                print(f"JUBILEE: Movendo {pulled_card_instance.name} para o descarte pois o local está cheio.")
-            game_state.player.discard_pile.append(pulled_card_instance)
-    else:
+                print(f"JUBILEE: Local de Jubilee ({card_instance.name}) está cheio. {pulled_card_instance.name} vai para o descarte.")
+            game_state.player.discard_pile.append(pulled_card_instance) # Card goes to discard if location is full
+    else: # Jubilee's location not found
         if not game_state.simulation_mode:
-            print(f"ERRO JUBILEE: Não foi possível encontrar o local da carta Jubilee ({card_instance.name}). Card {pulled_card_instance.name} retorna ao topo do baralho.")
-        game_state.player.deck.insert(0, pulled_card_instance)
+            print(f"ERRO JUBILEE: Não foi possível encontrar Jubilee ({card_instance.name}). {pulled_card_instance.name} retorna ao topo do baralho.")
+        game_state.player.deck.insert(0, pulled_card_instance) # Return card to deck if Jubilee's location not found
 
 
-def ability_ghost_rider(game_state, card_instance: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
+def ability_ghost_rider(game_state, card_instance: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # card_instance is Ghost Rider
     """On Reveal: Bring back one of your discarded cards to this location."""
+
     relevant_outcome = None
     if resolved_outcomes_list:
         for outcome_data in resolved_outcomes_list:
             if outcome_data.get('source_card_id') == card_instance.id and \
-               outcome_data.get('outcome_type') == 'GHOST_RIDER_CHOICE':
+               outcome_data.get('outcome_type') == 'GHOST_RIDER_CHOICE': # Defined outcome_type
                 relevant_outcome = outcome_data
                 break
 
-    card_to_resurrect_id = None
     card_to_resurrect_instance = None
 
     if relevant_outcome and 'resurrected_id' in relevant_outcome:
-        card_to_resurrect_id = relevant_outcome['resurrected_id']
+        resurrected_id_from_user = relevant_outcome['resurrected_id']
         if not game_state.simulation_mode:
-            print(f"GHOST RIDER: Using pre-resolved resurrected ID: {card_to_resurrect_id}")
+            print(f"GHOST RIDER: Using pre-resolved resurrected ID: {resurrected_id_from_user}")
         for card_in_discard in game_state.player.discard_pile:
-            if card_in_discard.id == card_to_resurrect_id:
+            if card_in_discard.id == resurrected_id_from_user:
                 card_to_resurrect_instance = card_in_discard
                 break
-        if not card_to_resurrect_instance and not game_state.simulation_mode:
-            print(f"GHOST RIDER_WARNING: Pre-resolved resurrected ID {card_to_resurrect_id} not found in discard pile. Falling back to RNG.")
-            card_to_resurrect_id = None
+        if not card_to_resurrect_instance and not game_state.simulation_mode: # ID not found in discard
+            print(f"GHOST RIDER_WARNING: Pre-resolved resurrected ID {resurrected_id_from_user} not found in discard pile. Falling back to RNG.")
+            # Fallback to RNG is triggered by card_to_resurrect_instance remaining None
 
-    if not card_to_resurrect_instance:
+    if not card_to_resurrect_instance: # Fallback to RNG if no pre-resolved outcome, or if specified ID not found
         if not game_state.player.discard_pile:
             if not game_state.simulation_mode:
-                print("GHOST RIDER: Pilha de descarte vazia, nenhuma carta para ressuscitar (RNG path).")
+                print("GHOST RIDER: Pilha de descarte vazia (RNG path).")
             return
         if not game_state.simulation_mode:
-            print("GHOST RIDER: No pre-resolved outcome or ID invalid/not found. Choosing random card from discard (RNG path).")
+            print("GHOST RIDER: Choosing random card from discard (RNG path).")
         card_to_resurrect_instance = random.choice(game_state.player.discard_pile)
 
-    if not card_to_resurrect_instance:
+    if not card_to_resurrect_instance: # Should only happen if discard pile was empty and RNG path was taken.
         if not game_state.simulation_mode:
-            print("GHOST RIDER_ERROR: Failed to select a card to resurrect.")
+            print("GHOST RIDER_ERROR: Failed to select/find a card to resurrect.")
         return
 
     if not game_state.simulation_mode:
@@ -175,7 +175,7 @@ def ability_ghost_rider(game_state, card_instance: 'Card', resolved_outcomes_lis
 
     location_of_ghost_rider = None
     for loc_list in game_state.locations:
-        if card_instance in loc_list:
+        if card_instance in loc_list: # card_instance is the Ghost Rider card itself
             location_of_ghost_rider = loc_list
             break
 
@@ -186,17 +186,14 @@ def ability_ghost_rider(game_state, card_instance: 'Card', resolved_outcomes_lis
                 print(f"GHOST RIDER: {card_to_resurrect_instance.name} ressuscitado(a) para o local de Ghost Rider.")
             if hasattr(card_to_resurrect_instance, 'ability_function') and callable(card_to_resurrect_instance.ability_function):
                 game_state.resolution_queue.insert(0, (card_to_resurrect_instance.ability_function, card_to_resurrect_instance))
-                if not game_state.simulation_mode:
-                    print(f"GHOST RIDER: Habilidade de {card_to_resurrect_instance.name} adicionada ao início da fila de resolução.")
         else: # Location is full
             if not game_state.simulation_mode:
-                print(f"GHOST RIDER: Local de Ghost Rider (onde {card_instance.name} está) está cheio. {card_to_resurrect_instance.name} não pode ser adicionado.")
-                print(f"GHOST RIDER: Movendo {card_to_resurrect_instance.name} de volta para o descarte pois o local está cheio.")
-            game_state.player.discard_pile.append(card_to_resurrect_instance) # Return to discard
-    else:
+                print(f"GHOST RIDER: Local de Ghost Rider (onde {card_instance.name} está) está cheio. {card_to_resurrect_instance.name} retorna ao descarte.")
+            game_state.player.discard_pile.append(card_to_resurrect_instance) # Return to discard if location full
+    else: # Ghost Rider's location not found
         if not game_state.simulation_mode:
-            print(f"ERRO GHOST RIDER: Não foi possível encontrar o local da carta Ghost Rider ({card_instance.name}). Card {card_to_resurrect_instance.name} retorna ao descarte.")
-        game_state.player.discard_pile.append(card_to_resurrect_instance) # Return to discard
+            print(f"ERRO GHOST RIDER: Não foi possível encontrar o local da carta Ghost Rider ({card_instance.name}). {card_to_resurrect_instance.name} retorna ao descarte.")
+        game_state.player.discard_pile.append(card_to_resurrect_instance) # Return to discard if Ghost Rider's location not found
 
 def ability_gambit(game_state, card: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
     """Ao Revelar: Descarta uma carta da sua mão para destruir uma carta inimiga aleatória."""
@@ -374,6 +371,7 @@ def ability_blink(game_state, card: 'Card', resolved_outcomes_list: Optional[Lis
         print(f"BLINK: Returned {target_card_played_instance.name} to deck and shuffled.")
 
 def ability_infinity_ultron(game_state, card_instance: 'Card', resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # Signature changed
+    from deck_factory import create_card_from_prepared_data # LOCAL IMPORT
     """On Reveal: Add 2 of Ultron’s Stones to your hand."""
     relevant_outcome = None
     if resolved_outcomes_list:
@@ -416,6 +414,7 @@ def ability_infinity_ultron(game_state, card_instance: 'Card', resolved_outcomes
         print("INFINITY_ULTRON: No stones added to hand.")
 
 def ability_legion(game_state, card_instance: 'Card'): # Signature changed
+    from deck_factory import create_card_from_prepared_data # LOCAL IMPORT
     """
     On Reveal: Replace each other location with this one.
     """
