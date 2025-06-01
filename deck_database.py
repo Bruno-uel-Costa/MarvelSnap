@@ -12,3 +12,12 @@ DECK_COMPOSITION = [
     {'id': 11, 'name': 'Odin', 'cost': 6, 'power': 8, 'ability_text': 'On Reveal: Repeat the On Reveal abilities of your other cards here.', 'is_complex_rng': True, 'is_on_reveal': True},
     {'id': 12, 'name': 'The Infinaut', 'cost': 6, 'power': 20, 'ability_text': 'If you played a card last turn, you can’t play this.'} # is_on_reveal is False
 ]
+
+ULTRON_STONES = [
+    {'id': 101, 'name': 'Mind Stone', 'cost': 1, 'power': 1, 'ability_text': 'Stone: Draws a card.', 'is_complex_rng': False, 'is_on_reveal': False}, # Placeholder simple ability
+    {'id': 102, 'name': 'Power Stone', 'cost': 1, 'power': 3, 'ability_text': 'Stone: +1 Power to other cards here.', 'is_complex_rng': False, 'is_on_reveal': False}, # Placeholder simple ability
+    {'id': 103, 'name': 'Reality Stone', 'cost': 1, 'power': 1, 'ability_text': 'Stone: Transforms this location.', 'is_complex_rng': False, 'is_on_reveal': False}, # Placeholder simple ability
+    {'id': 104, 'name': 'Soul Stone', 'cost': 1, 'power': 1, 'ability_text': 'Stone: Afflicts enemy cards here with -1 Power.', 'is_complex_rng': False, 'is_on_reveal': False}, # Placeholder simple ability
+    {'id': 105, 'name': 'Space Stone', 'cost': 1, 'power': 1, 'ability_text': 'Stone: Next turn you can move a card to this location.', 'is_complex_rng': False, 'is_on_reveal': False}, # Placeholder simple ability
+    {'id': 106, 'name': 'Time Stone', 'cost': 1, 'power': 1, 'ability_text': 'Stone: Next turn you get +1 Energy.', 'is_complex_rng': False, 'is_on_reveal': False} # Placeholder simple ability
+]

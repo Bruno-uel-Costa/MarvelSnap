@@ -1,12 +1,12 @@
 # Arquivo: card.py
+from abilities import ability_placeholder
+from typing import Callable # Certifique-se que Callable também está importado, se já não estiver
 
 class Card:
     """
     Representa uma única carta no jogo, com todos os seus atributos estáticos.
     """
-    # Adicionado para compatibilidade com type hinting e abilities.py
-    from typing import Callable
-    from abilities import ability_placeholder # Importa um placeholder para habilidade
+    # Imports foram movidos para o topo do arquivo.
 
     def __init__(self, id: int, name: str, cost: int, power: int, ability_text: str, is_complex_rng: bool = False, is_on_reveal: bool = False): # Added is_complex_rng and is_on_reveal
         """

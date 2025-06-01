@@ -1,5 +1,7 @@
 # Arquivo: abilities.py
-import random # Add this line if not present
+import random
+from deck_database import ULTRON_STONES
+from card import Card
 
 def ability_placeholder(game_state, card):
     """Uma função vazia para cartas sem habilidade ou cuja habilidade não implementamos ainda."""
@@ -276,3 +278,23 @@ def ability_blink(game_state, card): # 'card' is the Blink instance
     random.shuffle(game_state.player.deck)
     if not game_state.simulation_mode:
         print(f"BLINK: Returned {target_card_played_instance.name} to deck and shuffled.")
+
+def ability_infinity_ultron(game_state, card_instance): # 'card_instance' is Infinity Ultron
+    """
+    On Reveal: Add 2 of Ultron’s Stones to your hand.
+    """
+    if len(ULTRON_STONES) < 2:
+        if not game_state.simulation_mode:
+            print("INFINITY_ULTRON: Not enough unique stones defined to add to hand.")
+        return
+
+    selected_stone_data_list = random.sample(ULTRON_STONES, 2)
+
+    if not game_state.simulation_mode:
+        print(f"INFINITY_ULTRON: Adding {selected_stone_data_list[0]['name']} and {selected_stone_data_list[1]['name']} to hand.")
+
+    for stone_data in selected_stone_data_list:
+        new_stone_card = Card(**stone_data)
+        game_state.player.hand.append(new_stone_card)
+        # if not game_state.simulation_mode:
+        #     print(f"INFINITY_ULTRON: Added {new_stone_card.name} to hand. Hand size: {len(game_state.player.hand)}")
