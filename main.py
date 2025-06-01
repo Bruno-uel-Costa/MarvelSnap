@@ -1,16 +1,18 @@
 # Arquivo: main.py
-from deck_factory import create_full_deck
+from game_state import GameState
 
 if __name__ == "__main__":
-    print("--- Verificando a montagem do baralho ---")
+    # Cria uma nova instância do jogo
+    game = GameState()
 
-    # Cria o baralho
-    my_deck = create_full_deck()
+    # Inicia o jogo
+    game.start_game()
+    print(game)
 
-    # Verifica se temos 12 cartas
-    print(f"Total de cartas no baralho: {len(my_deck)}")
+    # Avança para o turno 2
+    game.advance_to_next_turn()
+    print(game)
 
-    # Imprime cada carta para verificação visual
-    print("\nLista de Cartas no Baralho:")
-    for card in my_deck:
-        print(f"- ID: {card.id}, {card}") # Usando o __repr__ que definimos
+    # Avança para o turno 3
+    game.advance_to_next_turn()
+    print(game)
