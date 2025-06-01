@@ -42,32 +42,37 @@ class Player:
                 return card
         return None
 
-    def play_card(self, card_id: int) -> Optional[Card]:
+    def play_card(self, card_id: int, simulation_mode: bool = False) -> Optional[Card]:
         """
         Tenta jogar uma carta da mão. Verifica se há energia suficiente.
         Se for bem-sucedido, remove a carta da mão e retorna o objeto Card.
         """
         card_to_play = self.find_card_in_hand(card_id)
         if not card_to_play:
-            print(f"ERRO: Carta com ID {card_id} não encontrada na mão.")
+            if not simulation_mode: # Check the passed parameter
+                print(f"ERRO: Carta com ID {card_id} não encontrada na mão.")
             return None
 
         if self.energy_current >= card_to_play.cost:
             self.energy_current -= card_to_play.cost
             self.hand.remove(card_to_play)
-            print(f"JOGADA: {card_to_play.name} jogado(a).")
+            if not simulation_mode: # Check the passed parameter
+                print(f"JOGADA: {card_to_play.name} jogado(a).")
             return card_to_play
         else:
-            print(f"ERRO: Energia insuficiente para jogar {card_to_play.name}. Requer {card_to_play.cost}, disponível {self.energy_current}.")
+            if not simulation_mode: # Check the passed parameter
+                print(f"ERRO: Energia insuficiente para jogar {card_to_play.name}. Requer {card_to_play.cost}, disponível {self.energy_current}.")
             return None
 
-    def move_card_to_discard(self, card_to_discard: Card):
+    def move_card_to_discard(self, card_to_discard: Card, simulation_mode: bool = False):
         """
         Move uma carta específica da mão para a pilha de descarte.
         """
         if card_to_discard in self.hand:
             self.hand.remove(card_to_discard)
             self.discard_pile.append(card_to_discard)
-            print(f"DESCARTE: {card_to_discard.name} movido(a) para o descarte.")
+            if not simulation_mode:
+                print(f"DESCARTE: {card_to_discard.name} movido(a) para o descarte.")
         else:
-            print(f"AVISO: Tentativa de descartar {card_to_discard.name}, que não está na mão.")
+            if not simulation_mode:
+                print(f"AVISO: Tentativa de descartar {card_to_discard.name}, que não está na mão.")
