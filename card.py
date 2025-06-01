@@ -1,4 +1,6 @@
 # Arquivo: card.py
+from typing import Callable # Add this line
+from abilities import ability_placeholder # Add this line
 
 class Card:
     """
@@ -20,6 +22,7 @@ class Card:
         self.cost = cost
         self.power = power
         self.ability_text = ability_text
+        self.ability_function: Callable = ability_placeholder # Add this line
 
     def __repr__(self) -> str:
         """

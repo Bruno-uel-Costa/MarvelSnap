@@ -1,6 +1,7 @@
 # Arquivo: game_state.py
 from player import Player
 from typing import List
+import random # Add this line
 
 class GameState:
     """
@@ -12,6 +13,7 @@ class GameState:
         # Por enquanto, representaremos os 3 locais como listas de cartas.
         # Mais tarde, isso pode se tornar uma classe 'Location' mais complexa.
         self.locations: List[List] = [[], [], []]
+        self.resolution_queue = [] # Add this line
 
     def start_game(self):
         """
@@ -62,3 +64,58 @@ class GameState:
         player_state = str(self.player)
         locations_state = f"Locais: {self.locations}" # Adicionar esta linha
         return f"{header}\n{player_state}\n{locations_state}\n" # Modificar esta linha
+
+    def process_resolution_queue(self):
+        """
+        Processa eventos na fila de resolução até que ela esteja vazia.
+        Esta é a chave para lidar com reações em cadeia (ex: Hela -> Ghost Rider).
+        """
+        print("--- Processando Fila de Resolução ---")
+        while self.resolution_queue:
+            # Pega o próximo evento (uma função de habilidade) da fila
+            event_function, card_instance = self.resolution_queue.pop(0)
+
+            print(f"EXECUTANDO: Habilidade de {card_instance.name}")
+            # Executa a função da habilidade, passando o estado atual do jogo
+            event_function(self, card_instance)
+
+    def run_full_simulation(self):
+        """
+        Executa uma simulação completa e aleatória de um jogo a partir do estado atual.
+        """
+        print("\n\n===== INICIANDO SIMULAÇÃO COMPLETA =====")
+        self.start_game()
+        print(self)
+
+        while self.turn <= 6:
+            # Encontra todas as jogadas legais
+            playable_cards = [card for card in self.player.hand if card.cost <= self.player.energy_current]
+
+            if playable_cards:
+                # Escolhe uma carta e um local aleatórios
+                card_to_play = random.choice(playable_cards)
+                location_to_play = random.randint(0, 2)
+
+                print(f"SIMULAÇÃO T{self.turn}: Jogando {card_to_play.name} no local {location_to_play}")
+
+                # Joga a carta e adiciona sua habilidade à fila de resolução
+                played_card_instance = self.player.play_card(card_to_play.id) # player.play_card handles energy and hand removal
+                if played_card_instance:
+                    self.locations[location_to_play].append(played_card_instance)
+                    # Adiciona a função da habilidade e a instância da carta à fila
+                    self.resolution_queue.append((played_card_instance.ability_function, played_card_instance))
+
+            else:
+                print(f"SIMULAÇÃO T{self.turn}: Nenhuma jogada possível.")
+
+            # Processa todas as habilidades que foram acionadas
+            self.process_resolution_queue()
+
+            if self.turn == 6: # Check if it's the end of the game
+                break
+
+            # Avança para o próximo turno
+            self.advance_to_next_turn() # This method increments turn, draws card, updates energy
+            print(self) # Print game state at the start of the new turn
+
+        print("\n===== SIMULAÇÃO CONCLUÍDA =====")
