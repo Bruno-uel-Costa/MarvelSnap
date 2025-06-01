@@ -1,114 +1,204 @@
 # Arquivo: abilities.py
 import random
+from typing import Optional, List, Dict, Any # Added for type hinting
 from deck_database import ULTRON_STONES
 from card import Card
+from deck_factory import create_card_from_prepared_data # Added for Infinity Ultron
 
-def ability_placeholder(game_state, card):
+def ability_placeholder(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None):
     """Uma função vazia para cartas sem habilidade ou cuja habilidade não implementamos ainda."""
     pass
 
-def ability_blade(game_state, card):
+def ability_blade(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None):
     """Ao Revelar: Descarta a carta mais à direita da sua mão."""
     hand = game_state.player.hand
     if hand:
-        card_to_discard = hand[-1] # A última carta da lista é a mais à direita
+        card_to_discard = hand[-1]
         game_state.player.move_card_to_discard(card_to_discard, simulation_mode=game_state.simulation_mode)
 
-# Nota do Maestro: Por enquanto, implementaremos apenas a do Blade.
-# As outras podem usar o 'placeholder'.
 
-def ability_corvus_glaive(game_state, card):
+def ability_corvus_glaive(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # card is Corvus instance
     """Ao Revelar: Descarta 2 cartas da sua mão para ganhar +1 de Energia Máxima."""
-    hand = game_state.player.hand
-    if len(hand) >= 2:
-        # Escolhe 2 cartas aleatórias e únicas da mão para descartar
-        cards_to_discard = random.sample(hand, 2)
+    relevant_outcome = None
+    if resolved_outcomes_list:
+        for outcome_data in resolved_outcomes_list:
+            if outcome_data.get('source_card_id') == card.id and \
+               outcome_data.get('outcome_type') == 'CORVUS_DISCARD':
+                relevant_outcome = outcome_data
+                break
+
+    cards_to_discard_instances = []
+    if relevant_outcome and 'discarded_ids' in relevant_outcome:
         if not game_state.simulation_mode:
-            print(f"CORVUS: Descartando {cards_to_discard[0].name} e {cards_to_discard[1].name}")
-        for c_to_discard in cards_to_discard:
+            print(f"CORVUS: Using pre-resolved discards: {relevant_outcome['discarded_ids']}")
+        for cid in relevant_outcome['discarded_ids']:
+            card_obj = game_state.player.find_card_in_hand(cid)
+            if card_obj:
+                cards_to_discard_instances.append(card_obj)
+            elif not game_state.simulation_mode:
+                print(f"CORVUS_WARNING: Pre-resolved discard ID {cid} not found in hand.")
+    else:
+        if not game_state.simulation_mode:
+            print("CORVUS: No pre-resolved outcome found or no discarded_ids. Falling back to RNG.")
+        hand = game_state.player.hand
+        if len(hand) >= 2:
+            cards_to_discard_instances = random.sample(hand, 2)
+        elif len(hand) == 1:
+            cards_to_discard_instances = [hand[0]]
+
+    if cards_to_discard_instances:
+        discarded_names = [c.name for c in cards_to_discard_instances]
+        if not game_state.simulation_mode:
+            print(f"CORVUS: Discarding {', '.join(discarded_names) if discarded_names else 'nothing'}.")
+        for c_to_discard in list(cards_to_discard_instances):
             game_state.player.move_card_to_discard(c_to_discard, simulation_mode=game_state.simulation_mode)
-    elif len(hand) == 1:
-        card_to_discard_single = hand[0]
-        if not game_state.simulation_mode:
-            print(f"CORVUS: Descartando {card_to_discard_single.name}")
-        game_state.player.move_card_to_discard(card_to_discard_single, simulation_mode=game_state.simulation_mode)
+    elif not game_state.simulation_mode:
+        print("CORVUS: No cards to discard (either hand empty or pre-resolved specified none).")
 
     game_state.player.energy_max += 1
     if not game_state.simulation_mode:
         print("CORVUS: +1 de Energia Máxima concedido.")
 
-def ability_jubilee(game_state, card): # 'card' is the instance of Jubilee
-    """Ao Revelar: Adiciona a carta do topo do seu baralho a este local."""
-    deck = game_state.player.deck
-    if deck:
-        pulled_card = deck.pop(0) # Get the top card
-        if not game_state.simulation_mode:
-            print(f"JUBILEE: Puxou {pulled_card.name} do baralho.")
-
-        # Encontra o local onde a Jubilee (the 'card' instance) está
-        # This is important to ensure the pulled card goes to the same location as Jubilee.
-        location_of_jubilee = None
-        for loc_list in game_state.locations:
-            if card in loc_list: # 'card' is the Jubilee instance that triggered this ability
-                location_of_jubilee = loc_list
+def ability_jubilee(game_state, card_instance, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # card_instance is Jubilee
+    """On Reveal: Add the top card of your deck to this location."""
+    relevant_outcome = None
+    if resolved_outcomes_list:
+        for outcome_data in resolved_outcomes_list:
+            if outcome_data.get('source_card_id') == card_instance.id and \
+               outcome_data.get('outcome_type') == 'JUBILEE_PULL':
+                relevant_outcome = outcome_data
                 break
 
-        if location_of_jubilee is not None:
-            location_of_jubilee.append(pulled_card)
+    pulled_card_instance = None
+
+    if relevant_outcome and 'pulled_card_id' in relevant_outcome:
+        pulled_card_id = relevant_outcome['pulled_card_id']
+        if not game_state.simulation_mode:
+            print(f"JUBILEE: Using pre-resolved pulled card ID: {pulled_card_id}")
+        found_in_deck = False
+        for i, card_in_deck in enumerate(game_state.player.deck):
+            if card_in_deck.id == pulled_card_id:
+                pulled_card_instance = game_state.player.deck.pop(i)
+                found_in_deck = True
+                break
+        if not found_in_deck and not game_state.simulation_mode:
+            print(f"JUBILEE_WARNING: Pre-resolved pulled card ID {pulled_card_id} not found in deck. Falling back to RNG.")
+            pulled_card_instance = None # Force RNG path
+
+    if not pulled_card_instance:
+        if not game_state.player.deck:
             if not game_state.simulation_mode:
-                print(f"JUBILEE: {pulled_card.name} adicionado(a) ao local de Jubilee.")
-            if hasattr(pulled_card, 'ability_function') and callable(pulled_card.ability_function):
-                game_state.resolution_queue.insert(0, (pulled_card.ability_function, pulled_card))
+                print("JUBILEE: Baralho vazio, nenhuma carta para puxar (RNG path).")
+            return
+        if not game_state.simulation_mode:
+            print("JUBILEE: No pre-resolved outcome or ID not in deck. Pulling card from top of deck (RNG path).")
+        pulled_card_instance = game_state.player.deck.pop(0)
+
+    if not pulled_card_instance:
+        if not game_state.simulation_mode:
+            print("JUBILEE_ERROR: Failed to select a card to pull.")
+        return
+
+    if not game_state.simulation_mode:
+        print(f"JUBILEE: Puxou {pulled_card_instance.name} do baralho.")
+
+    location_of_jubilee = None
+    for loc_list in game_state.locations:
+        if card_instance in loc_list:
+            location_of_jubilee = loc_list
+            break
+
+    if location_of_jubilee is not None:
+        if len(location_of_jubilee) < 4:
+            location_of_jubilee.append(pulled_card_instance)
+            if not game_state.simulation_mode:
+                print(f"JUBILEE: {pulled_card_instance.name} adicionado(a) ao local de Jubilee.")
+            if hasattr(pulled_card_instance, 'ability_function') and callable(pulled_card_instance.ability_function):
+                game_state.resolution_queue.insert(0, (pulled_card_instance.ability_function, pulled_card_instance))
                 if not game_state.simulation_mode:
-                    print(f"JUBILEE: Habilidade de {pulled_card.name} adicionada ao início da fila de resolução.")
-            else:
-                if not game_state.simulation_mode:
-                    print(f"JUBILEE: {pulled_card.name} não tem uma função de habilidade configurada.")
+                    print(f"JUBILEE: Habilidade de {pulled_card_instance.name} adicionada ao início da fila de resolução.")
         else:
             if not game_state.simulation_mode:
-                print(f"ERRO JUBILEE: Não foi possível encontrar o local da carta Jubilee ({card.name}).")
+                print(f"JUBILEE: Local de Jubilee (onde {card_instance.name} está) está cheio. {pulled_card_instance.name} não pode ser adicionado.")
+                print(f"JUBILEE: Movendo {pulled_card_instance.name} para o descarte pois o local está cheio.")
+            game_state.player.discard_pile.append(pulled_card_instance)
     else:
         if not game_state.simulation_mode:
-            print("JUBILEE: Baralho vazio, nenhuma carta para puxar.")
+            print(f"ERRO JUBILEE: Não foi possível encontrar o local da carta Jubilee ({card_instance.name}). Card {pulled_card_instance.name} retorna ao topo do baralho.")
+        game_state.player.deck.insert(0, pulled_card_instance)
 
-def ability_ghost_rider(game_state, card): # 'card' is the instance of Ghost Rider
-    """Ao Revelar: Traz de volta uma de suas cartas descartadas para este local."""
-    discard_pile = game_state.player.discard_pile
-    if discard_pile:
-        card_to_resurrect = random.choice(discard_pile)
-        if not game_state.simulation_mode:
-            print(f"GHOST RIDER: Tentando ressuscitar {card_to_resurrect.name}.")
 
-        # Remove do descarte
-        game_state.player.discard_pile.remove(card_to_resurrect) # More direct way to remove
-
-        # Encontra o local onde o Ghost Rider (the 'card' instance) está
-        location_of_ghost_rider = None
-        for loc_list in game_state.locations:
-            if card in loc_list: # 'card' is the Ghost Rider instance
-                location_of_ghost_rider = loc_list
+def ability_ghost_rider(game_state, card_instance, resolved_outcomes_list=None): # card_instance is Ghost Rider
+    """On Reveal: Bring back one of your discarded cards to this location."""
+    relevant_outcome = None
+    if resolved_outcomes_list:
+        for outcome_data in resolved_outcomes_list:
+            if outcome_data.get('source_card_id') == card_instance.id and \
+               outcome_data.get('outcome_type') == 'GHOST_RIDER_CHOICE':
+                relevant_outcome = outcome_data
                 break
 
-        if location_of_ghost_rider is not None:
-            location_of_ghost_rider.append(card_to_resurrect)
+    card_to_resurrect_id = None
+    card_to_resurrect_instance = None
+
+    if relevant_outcome and 'resurrected_id' in relevant_outcome:
+        card_to_resurrect_id = relevant_outcome['resurrected_id']
+        if not game_state.simulation_mode:
+            print(f"GHOST RIDER: Using pre-resolved resurrected ID: {card_to_resurrect_id}")
+        for card_in_discard in game_state.player.discard_pile:
+            if card_in_discard.id == card_to_resurrect_id:
+                card_to_resurrect_instance = card_in_discard
+                break
+        if not card_to_resurrect_instance and not game_state.simulation_mode:
+            print(f"GHOST RIDER_WARNING: Pre-resolved resurrected ID {card_to_resurrect_id} not found in discard pile. Falling back to RNG.")
+            card_to_resurrect_id = None
+
+    if not card_to_resurrect_instance:
+        if not game_state.player.discard_pile:
             if not game_state.simulation_mode:
-                print(f"GHOST RIDER: {card_to_resurrect.name} ressuscitado(a) para o local de Ghost Rider.")
-            if hasattr(card_to_resurrect, 'ability_function') and callable(card_to_resurrect.ability_function):
-                game_state.resolution_queue.insert(0, (card_to_resurrect.ability_function, card_to_resurrect))
-                if not game_state.simulation_mode:
-                    print(f"GHOST RIDER: Habilidade de {card_to_resurrect.name} adicionada ao início da fila de resolução.")
-            else:
-                if not game_state.simulation_mode:
-                    print(f"GHOST RIDER: {card_to_resurrect.name} não tem uma função de habilidade configurada.")
-        else:
+                print("GHOST RIDER: Pilha de descarte vazia, nenhuma carta para ressuscitar (RNG path).")
+            return
+        if not game_state.simulation_mode:
+            print("GHOST RIDER: No pre-resolved outcome or ID invalid/not found. Choosing random card from discard (RNG path).")
+        card_to_resurrect_instance = random.choice(game_state.player.discard_pile)
+
+    if not card_to_resurrect_instance:
+        if not game_state.simulation_mode:
+            print("GHOST RIDER_ERROR: Failed to select a card to resurrect.")
+        return
+
+    if not game_state.simulation_mode:
+        print(f"GHOST RIDER: Attempting to resurrect {card_to_resurrect_instance.name}.")
+    game_state.player.discard_pile.remove(card_to_resurrect_instance)
+
+    location_of_ghost_rider = None
+    for loc_list in game_state.locations:
+        if card_instance in loc_list:
+            location_of_ghost_rider = loc_list
+            break
+
+    if location_of_ghost_rider is not None:
+        if len(location_of_ghost_rider) < 4:
+            location_of_ghost_rider.append(card_to_resurrect_instance)
             if not game_state.simulation_mode:
-                print(f"ERRO GHOST RIDER: Não foi possível encontrar o local da carta Ghost Rider ({card.name}).")
+                print(f"GHOST RIDER: {card_to_resurrect_instance.name} ressuscitado(a) para o local de Ghost Rider.")
+            if hasattr(card_to_resurrect_instance, 'ability_function') and callable(card_to_resurrect_instance.ability_function):
+                game_state.resolution_queue.insert(0, (card_to_resurrect_instance.ability_function, card_to_resurrect_instance))
+                if not game_state.simulation_mode:
+                    print(f"GHOST RIDER: Habilidade de {card_to_resurrect_instance.name} adicionada ao início da fila de resolução.")
+        else: # Location is full
+            if not game_state.simulation_mode:
+                print(f"GHOST RIDER: Local de Ghost Rider (onde {card_instance.name} está) está cheio. {card_to_resurrect_instance.name} não pode ser adicionado.")
+                print(f"GHOST RIDER: Movendo {card_to_resurrect_instance.name} de volta para o descarte pois o local está cheio.")
+            game_state.player.discard_pile.append(card_to_resurrect_instance) # Return to discard
     else:
         if not game_state.simulation_mode:
-            print("GHOST RIDER: Pilha de descarte vazia, nenhuma carta para ressuscitar.")
+            print(f"ERRO GHOST RIDER: Não foi possível encontrar o local da carta Ghost Rider ({card_instance.name}). Card {card_to_resurrect_instance.name} retorna ao descarte.")
+        game_state.player.discard_pile.append(card_to_resurrect_instance) # Return to discard
 
-def ability_gambit(game_state, card):
+def ability_gambit(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None):
     """Ao Revelar: Descarta uma carta da sua mão para destruir uma carta inimiga aleatória."""
+    # TODO: Adapt Gambit for pre-resolved outcomes (which card is discarded, which enemy is destroyed) if needed.
     if game_state.player.hand:
         card_to_discard = random.choice(game_state.player.hand)
         game_state.player.move_card_to_discard(card_to_discard, simulation_mode=game_state.simulation_mode)
@@ -118,10 +208,9 @@ def ability_gambit(game_state, card):
         if not game_state.simulation_mode:
             print("GAMBIT: Habilidade falhou (sem cartas na mão para descartar).")
 
-def ability_hela(game_state, card): # 'card' is Hela instance
+def ability_hela(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # 'card' is Hela instance
     """Ao Revelar: Ressuscita cartas de custos diferentes da pilha de descarte."""
-    # Lei nº 2: O "Snapshot" de Estado
-    # Create a copy of the discard pile to iterate over, as it will be modified.
+    # TODO: Adapt Hela for pre-resolved outcomes (which card per cost is chosen) if needed.
     snapshot_discard_pile = list(game_state.player.discard_pile)
 
     if not snapshot_discard_pile:
@@ -166,7 +255,7 @@ def ability_hela(game_state, card): # 'card' is Hela instance
                     print(f"HELA: Ressuscitou {c_res.name} no local {loc_index}.")
 
                 if hasattr(c_res, 'ability_function') and callable(c_res.ability_function):
-                    game_state.resolution_queue.insert(0, (c_res.ability_function, c_res))
+                    game_state.resolution_queue.insert(0, (c_res.ability_function, c_res)) # Queue as 2-tuple
                     if not game_state.simulation_mode:
                         print(f"HELA: Habilidade de {c_res.name} adicionada ao início da fila de resolução.")
                 else:
@@ -179,10 +268,11 @@ def ability_hela(game_state, card): # 'card' is Hela instance
             if not game_state.simulation_mode:
                 print(f"HELA: Nenhum local com espaço disponível para {c_res.name}.")
 
-def ability_odin(game_state, card): # 'card' is the Odin instance
+def ability_odin(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # 'card' is the Odin instance
     """Ao Revelar: Repete as habilidades 'Ao Revelar' de suas outras cartas aqui."""
+    # Odin's re-triggering doesn't involve new RNG from Odin itself, but re-triggers other abilities
+    # which might then use their own RNG or their part of resolved_outcomes_list.
     odin_location_index = -1
-    # Find Odin's location
     for i, loc_list in enumerate(game_state.locations): # Renamed loc to loc_list
         if card in loc_list: # 'card' is the Odin instance
             odin_location_index = i
@@ -203,7 +293,7 @@ def ability_odin(game_state, card): # 'card' is the Odin instance
 
         for other_card_instance in other_cards_in_location_snapshot:
             if hasattr(other_card_instance, 'ability_function') and callable(other_card_instance.ability_function):
-                game_state.resolution_queue.insert(0, (other_card_instance.ability_function, other_card_instance))
+                game_state.resolution_queue.insert(0, (other_card_instance.ability_function, other_card_instance)) # Queue as 2-tuple
                 if not game_state.simulation_mode:
                     print(f"ODIN: Habilidade de {other_card_instance.name} adicionada ao início da fila de resolução.")
             else:
@@ -213,10 +303,11 @@ def ability_odin(game_state, card): # 'card' is the Odin instance
         if not game_state.simulation_mode:
             print(f"ERRO ODIN: Não foi possível encontrar o local da carta Odin ({card.name}).")
 
-def ability_blink(game_state, card): # 'card' is the Blink instance
+def ability_blink(game_state, card, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # 'card' is the Blink instance
     """
     On Reveal: Swap the last card you played with a card that costs more from your deck.
     """
+    # TODO: Adapt Blink for pre-resolved outcomes (which card from deck, if multiple eligible) if needed.
     if not game_state.play_history:
         if not game_state.simulation_mode:
             print("BLINK: Play history is empty. Blink's ability fizzles.")
@@ -270,7 +361,7 @@ def ability_blink(game_state, card): # 'card' is the Blink instance
         print(f"BLINK: Added {card_from_deck.name} to location {target_location_index}.")
 
     if hasattr(card_from_deck, 'ability_function') and callable(card_from_deck.ability_function):
-        game_state.resolution_queue.insert(0, (card_from_deck.ability_function, card_from_deck))
+        game_state.resolution_queue.insert(0, (card_from_deck.ability_function, card_from_deck)) # Queue as 2-tuple
         if not game_state.simulation_mode:
             print(f"BLINK: Queued ability of {card_from_deck.name}.")
 
@@ -279,22 +370,89 @@ def ability_blink(game_state, card): # 'card' is the Blink instance
     if not game_state.simulation_mode:
         print(f"BLINK: Returned {target_card_played_instance.name} to deck and shuffled.")
 
-def ability_infinity_ultron(game_state, card_instance): # 'card_instance' is Infinity Ultron
-    """
-    On Reveal: Add 2 of Ultron’s Stones to your hand.
-    """
-    if len(ULTRON_STONES) < 2:
+def ability_infinity_ultron(game_state, card_instance, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # card_instance is Ultron
+    """On Reveal: Add 2 of Ultron’s Stones to your hand."""
+    relevant_outcome = None
+    if resolved_outcomes_list:
+        for outcome_data in resolved_outcomes_list:
+            if outcome_data.get('source_card_id') == card_instance.id and \
+               outcome_data.get('outcome_type') == 'ULTRON_STONES':
+                relevant_outcome = outcome_data
+                break
+
+    stone_ids_to_add = []
+    if relevant_outcome and 'generated_stone_ids' in relevant_outcome:
         if not game_state.simulation_mode:
-            print("INFINITY_ULTRON: Not enough unique stones defined to add to hand.")
+            print(f"ULTRON: Using pre-resolved stones: {relevant_outcome['generated_stone_ids']}")
+        stone_ids_to_add = relevant_outcome['generated_stone_ids']
+        if len(stone_ids_to_add) != 2 and not game_state.simulation_mode:
+             print(f"ULTRON_WARNING: Pre-resolved outcome provided {len(stone_ids_to_add)} stones, expected 2. Using as is.")
+    else:
+        if not game_state.simulation_mode:
+            print("ULTRON: No pre-resolved outcome. Generating stones with RNG.")
+        if len(ULTRON_STONES) < 2:
+            if not game_state.simulation_mode:
+                print("INFINITY_ULTRON: Not enough unique stones defined.")
+            return # Return early if not enough stones to pick from
+        selected_stone_data_list = random.sample(ULTRON_STONES, 2)
+        stone_ids_to_add = [sd['id'] for sd in selected_stone_data_list]
+
+    added_stone_names = []
+    for stone_id in stone_ids_to_add:
+        new_stone_card = create_card_from_prepared_data(stone_id)
+        if new_stone_card:
+            game_state.player.hand.append(new_stone_card)
+            added_stone_names.append(new_stone_card.name)
+        elif not game_state.simulation_mode:
+            print(f"ULTRON_ERROR: Could not create stone card for ID {stone_id}")
+
+    if added_stone_names:
+        if not game_state.simulation_mode:
+            print(f"INFINITY_ULTRON: Added {', '.join(added_stone_names)} to hand.")
+    elif not game_state.simulation_mode:
+        print("INFINITY_ULTRON: No stones added to hand.")
+
+def ability_legion(game_state, card_instance, resolved_outcomes_list: Optional[List[Dict[str, Any]]] = None): # card_instance is Legion
+    """
+    On Reveal: Replace each other location with this one.
+    """
+    legion_location_index = -1
+    legion_actual_location_list = None
+
+    for i, loc_list in enumerate(game_state.locations):
+        if card_instance in loc_list:
+            legion_location_index = i
+            legion_actual_location_list = loc_list
+            break
+
+    if legion_location_index == -1 or legion_actual_location_list is None:
+        if not game_state.simulation_mode:
+            print(f"LEGION_ERROR: Could not find Legion ({card_instance.name}) in any location.")
         return
 
-    selected_stone_data_list = random.sample(ULTRON_STONES, 2)
-
     if not game_state.simulation_mode:
-        print(f"INFINITY_ULTRON: Adding {selected_stone_data_list[0]['name']} and {selected_stone_data_list[1]['name']} to hand.")
+        print(f"LEGION: Activated at location {legion_location_index}. Its content: {[c.name for c in legion_actual_location_list]}")
 
-    for stone_data in selected_stone_data_list:
-        new_stone_card = Card(**stone_data)
-        game_state.player.hand.append(new_stone_card)
-        # if not game_state.simulation_mode:
-        #     print(f"INFINITY_ULTRON: Added {new_stone_card.name} to hand. Hand size: {len(game_state.player.hand)}")
+    card_ids_in_legion_location = [c.id for c in legion_actual_location_list]
+
+    for i in range(len(game_state.locations)):
+        if i == legion_location_index:
+            continue
+
+        removed_cards_from_loc_i = game_state.locations[i][:]
+        if removed_cards_from_loc_i and not game_state.simulation_mode:
+            print(f"LEGION: Removing cards {[c.name for c in removed_cards_from_loc_i]} from location {i}.")
+
+        game_state.locations[i] = []
+
+        new_cards_for_location_i = []
+        for card_id_to_copy in card_ids_in_legion_location:
+            new_card_copy = create_card_from_prepared_data(card_id_to_copy)
+            if new_card_copy:
+                new_cards_for_location_i.append(new_card_copy)
+            elif not game_state.simulation_mode:
+                print(f"LEGION_ERROR: Could not create card copy for ID {card_id_to_copy} for location {i}")
+
+        game_state.locations[i].extend(new_cards_for_location_i)
+        if not game_state.simulation_mode:
+            print(f"LEGION: Location {i} now mirrors Legion's location with cards: {[c.name for c in game_state.locations[i]]}")

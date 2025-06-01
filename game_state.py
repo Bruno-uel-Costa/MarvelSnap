@@ -1,47 +1,96 @@
 # Arquivo: game_state.py
+import random
+import copy
+from collections import Counter
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
+
 from player import Player
-from typing import List
-import random # Add this line
-import copy  # Add this
-from collections import Counter  # Add this
+from deck_factory import create_card_from_prepared_data # Removed create_full_deck as Player handles its own deck init now
+
+if TYPE_CHECKING:
+    from card import Card
+
 
 class GameState:
     """
     A classe mestre que contém todo o estado de um jogo em um determinado momento.
     """
-    def __init__(self):
-        self.player = Player()
-        self.turn = 0
-        # Por enquanto, representaremos os 3 locais como listas de cartas.
-        # Mais tarde, isso pode se tornar uma classe 'Location' mais complexa.
-        self.locations: List[List] = [[], [], []]
-        self.resolution_queue = []
-        self.simulation_mode = False
-        self.play_history: List['Card'] = [] # Histórico de cartas jogadas
+    def __init__(self, initial_state_dict: Optional[Dict[str, Any]] = None):
+        self.player: Player
+        self.turn: int = 0
+        self.locations: List[List['Card']] = [[], [], []]
+        self.resolution_queue: list = []
+        self.play_history: List['Card'] = []
+        self.simulation_mode: bool = False # Ensure this is always initialized
+
+        if initial_state_dict:
+            self.player = Player() # Player init creates a full deck by default. We override its contents.
+
+            self.turn = initial_state_dict.get('turn', 1)
+            self.player.energy_current = initial_state_dict.get('current_energy', 0)
+            self.player.energy_max = initial_state_dict.get('max_energy', 0)
+
+            hand_ids = initial_state_dict.get('hand_ids', [])
+            self.player.hand = [card for card_id in hand_ids if (card := create_card_from_prepared_data(card_id)) is not None]
+
+            discard_ids = initial_state_dict.get('discard_ids', [])
+            self.player.discard_pile = [card for card_id in discard_ids if (card := create_card_from_prepared_data(card_id)) is not None]
+
+            deck_ids = initial_state_dict.get('deck_ids', [])
+            self.player.deck = [card for card_id in deck_ids if (card := create_card_from_prepared_data(card_id)) is not None]
+            # Note: Deck order is preserved from deck_ids. No shuffle here.
+
+            locations_data = initial_state_dict.get('locations', [[], [], []])
+            self.locations = []
+            for loc_ids_list in locations_data:
+                self.locations.append([card for card_id in loc_ids_list if (card := create_card_from_prepared_data(card_id)) is not None])
+
+            while len(self.locations) < 3:
+                self.locations.append([])
+            self.locations = self.locations[:3]
+
+            play_history_ids = initial_state_dict.get('play_history_ids', [])
+            self.play_history = [card for card_id in play_history_ids if (card := create_card_from_prepared_data(card_id)) is not None]
+
+            self.resolution_queue = [] # Start with an empty queue for a rehydrated state
+
+        else:
+            # Default initialization (new game)
+            self.player = Player()
+            self.turn = 0
+            self.locations = [[], [], []]
+            self.resolution_queue = []
+            self.play_history = []
+            # self.player.energy_max and self.player.energy_current will be set by start_game
 
     def start_game(self):
         """
         Prepara o estado inicial do jogo no turno 1.
+        (Assumes self.player is already initialized with a deck from __init__)
         """
         self.turn = 1
-        self.player.draw_cards(3) # Compra inicial
+        self.player.draw_cards(3)
         self.player.energy_max = 1
         self.player.energy_current = 1
-        print("--- Jogo Iniciado (Turno 1) ---")
+        self.play_history = []
+        self.resolution_queue = []
+        self.locations = [[], [], []] # Ensure locations are reset for a new game
+        print("--- Jogo Iniciado (Turno 1 via GameState.start_game) ---")
 
     def advance_to_next_turn(self):
         """
         Avança o jogo para o próximo turno.
         """
-        if self.turn >= 6:
-            print("O jogo já terminou.")
+        if self.turn >= 7:
+            print(f"GAMESTATE_INFO: Tentativa de avançar além do turno {self.turn}.")
             return
 
         self.turn += 1
-        print(f"\n--- Iniciando Turno {self.turn} ---")
-        self.player.draw_cards(1) # Compra do turno
-        self.player.energy_max = self.turn
-        self.player.energy_current = self.turn
+        print(f"\n--- Iniciando Turno {self.turn} (via GameState.advance_to_next_turn) ---")
+        self.player.draw_cards(1)
+        self.player.energy_max = min(self.turn, 6)
+        self.player.energy_current = self.player.energy_max
+        self.resolution_queue = [] # Clear queue at start of natural turn
 
     def play_card(self, card_id: int, location_index: int):
         """
@@ -69,21 +118,25 @@ class GameState:
         locations_state = f"Locais: {self.locations}" # Adicionar esta linha
         return f"{header}\n{player_state}\n{locations_state}\n" # Modificar esta linha
 
-    def process_resolution_queue(self):
+    def process_resolution_queue(self, resolved_outcomes_for_turn: Optional[List[Dict[str, Any]]] = None):
         """
-        Processa eventos na fila de Resolução até que ela esteja vazia.
-        Esta é a chave para lidar com reações em cadeia (ex: Hela -> Ghost Rider).
+        Processa eventos na fila de resolução.
+        'resolved_outcomes_for_turn': A list of user-provided outcomes for specific RNG events this turn.
         """
+        if resolved_outcomes_for_turn is None:
+            resolved_outcomes_for_turn = []
+
         if not self.simulation_mode:
             print("--- Processando Fila de Resolução ---")
+
         while self.resolution_queue:
-            # Pega o próximo evento (uma função de habilidade) da fila
             event_function, card_instance = self.resolution_queue.pop(0)
 
             if not self.simulation_mode:
-                print(f"EXECUTANDO: Habilidade de {card_instance.name}")
-            # Executa a função da habilidade, passando o estado atual do jogo
-            event_function(self, card_instance)
+                print(f"EXECUTANDO: Habilidade de {card_instance.name} (ID: {card_instance.id})")
+
+            # Pass game_state, card_instance, and the list of resolved_outcomes_for_turn
+            event_function(self, card_instance, resolved_outcomes_for_turn)
 
     # def run_full_simulation(self):
     #     """

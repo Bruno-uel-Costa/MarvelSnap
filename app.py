@@ -1,107 +1,179 @@
 # app.py
-
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify # Ensure 'request' is imported
 import sys
 import os
 
-# Assuming app.py is in the root, and other game logic is also in root.
-# If modules are in a sub-folder, sys.path adjustments might be needed, e.g.:
-# sys.path.append(os.path.join(os.path.dirname(__file__), 'your_subfolder_name'))
+# Assuming game logic modules are accessible
+# If your project structure is different (e.g., game logic in a sub-folder like 'game/'), adjust path.
+# sys.path.append(os.path.join(os.path.dirname(__file__), 'your_game_logic_subfolder'))
 
-from card import Card
-from deck_database import DECK_COMPOSITION, ULTRON_STONES
+from card import Card # For type checking if needed, though instances come from factory
 from game_state import GameState
-from player import Player
-# deck_factory is needed for ABILITY_MAPPING in create_card_instance_from_id
-from deck_factory import ABILITY_MAPPING, ability_placeholder
+# Import the utility from deck_factory to create card instances correctly
+from deck_factory import create_card_from_prepared_data, PREPARED_CARDS_BY_ID, get_prepared_card_definitions
 
 app = Flask(__name__)
 
-# Combine DECK_COMPOSITION and ULTRON_STONES for a full card lookup
-ALL_CARDS_RAW_DATA = DECK_COMPOSITION + ULTRON_STONES
-ALL_CARDS_LOOKUP_BY_ID = {card_data['id']: card_data for card_data in ALL_CARDS_RAW_DATA}
-
-def create_card_instance_from_id(card_id):
-    if card_id in ALL_CARDS_LOOKUP_BY_ID:
-        card_data = ALL_CARDS_LOOKUP_BY_ID[card_id]
-
-        card_obj = Card(
-            id=card_data['id'],
-            name=card_data['name'],
-            cost=card_data['cost'],
-            power=card_data['power'],
-            ability_text=card_data['ability_text'],
-            is_complex_rng=card_data.get('is_complex_rng', False),
-            is_on_reveal=card_data.get('is_on_reveal', False)
-        )
-        # Assign the correct ability function after instantiation
-        card_obj.ability_function = ABILITY_MAPPING.get(card_obj.name, ability_placeholder)
-        return card_obj
-    return None
+# Ensure card definitions are loaded when app starts, if not already by deck_factory module import
+if PREPARED_CARDS_BY_ID is None:
+    get_prepared_card_definitions()
 
 
-@app.route('/analyze', methods=['POST'])
-def analyze_game_state():
+@app.route('/api/start_game', methods=['GET'])
+def start_new_game():
+    try:
+        game = GameState()
+        game.start_game()
+
+        response_data = {
+            "turn": game.turn,
+            "current_energy": game.player.energy_current,
+            "max_energy": game.player.energy_max,
+            "hand_ids": [card.id for card in game.player.hand],
+            "deck_ids": [card.id for card in game.player.deck],
+            "deck_size": len(game.player.deck),
+            "discard_ids": [card.id for card in game.player.discard_pile],
+            "locations": [
+                [card.id for card in loc] for loc in game.locations
+            ],
+            "play_history_ids": [card.id for card in game.play_history]
+        }
+        return jsonify(response_data), 200
+    except Exception as e:
+        # print(f"Error in /api/start_game: {e}") # Server-side log
+        import traceback
+        traceback.print_exc() # Server-side log
+        return jsonify({"error": "An internal server error occurred during game start", "details": str(e)}), 500
+
+
+@app.route('/api/execute_actions_and_analyze', methods=['POST'])
+def execute_actions_and_analyze_route():
     try:
         data = request.get_json()
         if not data:
             return jsonify({"error": "Invalid JSON payload"}), 400
 
-        hand_ids = data.get('hand_ids', [])
-        discard_ids = data.get('discard_ids', [])
-        location1_ids = data.get('location1_ids', [])
-        location2_ids = data.get('location2_ids', [])
-        location3_ids = data.get('location3_ids', [])
+        current_game_state_dict = data.get('current_game_state')
+        player_actions = data.get('player_actions', [])
+        resolved_random_outcomes = data.get('resolved_random_outcomes', [])
 
-        current_energy = data.get('current_energy')
-        max_energy = data.get('max_energy')
-        current_turn = data.get('current_turn')
-        # Optional: play_history_ids for cards like Blink, though this might be complex to manage from UI
-        # play_history_ids = data.get('play_history_ids', [])
+        if not current_game_state_dict:
+            return jsonify({"error": "Missing current_game_state"}), 400
 
-        if current_energy is None or max_energy is None or current_turn is None:
-            return jsonify({"error": "Missing energy or turn information"}), 400
+        game = GameState(initial_state_dict=current_game_state_dict)
+        # Server-side logging (optional)
+        # print(f"EXEC_ACTIONS: Rehydrated GameState: Turn {game.turn}, Energy {game.player.energy_current}")
+        # print(f"EXEC_ACTIONS: Hand: {[c.name for c in game.player.hand if c]}, Deck: {len(game.player.deck)} cards")
+        # print(f"EXEC_ACTIONS: Actions: {player_actions}, Resolved RNG: {resolved_random_outcomes}")
 
-        game = GameState()
+        for action in player_actions:
+            if action.get('type') == 'PLAY_CARD':
+                card_id_to_play = action.get('card_id')
+                location_idx_to_play = action.get('location_index')
 
-        game.player.hand = [create_card_instance_from_id(id) for id in hand_ids if create_card_instance_from_id(id) is not None]
-        game.player.discard_pile = [create_card_instance_from_id(id) for id in discard_ids if create_card_instance_from_id(id) is not None]
+                if card_id_to_play is None or location_idx_to_play is None:
+                    # print(f"EXEC_ACTIONS_WARN: Invalid play action format: {action}")
+                    continue
 
-        game.locations[0] = [create_card_instance_from_id(id) for id in location1_ids if create_card_instance_from_id(id) is not None]
-        game.locations[1] = [create_card_instance_from_id(id) for id in location2_ids if create_card_instance_from_id(id) is not None]
-        game.locations[2] = [create_card_instance_from_id(id) for id in location3_ids if create_card_instance_from_id(id) is not None]
+                # Player.play_card defaults simulation_mode=False, so server logs from it are possible
+                played_card_instance = game.player.play_card(card_id_to_play)
 
-        game.player.energy_current = int(current_energy)
-        game.player.energy_max = int(max_energy)
-        game.turn = int(current_turn)
+                if played_card_instance:
+                    if 0 <= location_idx_to_play < len(game.locations):
+                        game.locations[location_idx_to_play].append(played_card_instance)
+                        if hasattr(played_card_instance, 'ability_function') and callable(played_card_instance.ability_function):
+                            game.resolution_queue.append((played_card_instance.ability_function, played_card_instance))
+                        game.play_history.append(played_card_instance)
+                        # print(f"EXEC_ACTIONS_INFO: Played {played_card_instance.name} to loc {location_idx_to_play}")
+                    # else:
+                        # print(f"EXEC_ACTIONS_ERROR: Invalid location index {location_idx_to_play} for card {played_card_instance.name}")
+                        # This case should ideally be prevented by frontend or result in a client error.
+                        # If it occurs, the card is consumed from hand but not placed, an inconsistent state.
+                        pass # Assuming valid inputs for now post rehydration.
+                # else:
+                    # print(f"EXEC_ACTIONS_INFO: Play card ID {card_id_to_play} failed (player.play_card handles its own logging).")
+                    pass
 
-        # game.play_history = [create_card_instance_from_id(id) for id in play_history_ids if create_card_instance_from_id(id) is not None]
+        game.process_resolution_queue(resolved_outcomes_for_turn=resolved_random_outcomes)
 
-        all_known_card_ids = set(hand_ids + discard_ids + location1_ids + location2_ids + location3_ids)
-        # Filter the default deck to remove known cards. This is a simplification.
-        # A more robust system would have the UI send the exact deck contents or manage deck creation differently.
-        initial_deck_ids = [card.id for card in game.player.deck] # Get IDs from default shuffled deck
-        unique_deck_ids_after_removal = [id for id in initial_deck_ids if id not in all_known_card_ids]
+        game_state_after_actions_dict = {
+            "turn": game.turn,
+            "current_energy": game.player.energy_current,
+            "max_energy": game.player.energy_max,
+            "hand_ids": [card.id for card in game.player.hand],
+            "deck_ids": [card.id for card in game.player.deck],
+            "deck_size": len(game.player.deck),
+            "discard_ids": [card.id for card in game.player.discard_pile],
+            "locations": [[card.id for card in loc] for loc in game.locations],
+            "play_history_ids": [card.id for card in game.play_history]
+        }
 
-        # To preserve the original deck's shuffle order as much as possible while removing known cards:
-        temp_deck = []
-        seen_ids_in_new_deck = set()
-        for card in game.player.deck: # Iterate through the original shuffled deck
-            if card.id not in all_known_card_ids and card.id not in seen_ids_in_new_deck:
-                temp_deck.append(card)
-                seen_ids_in_new_deck.add(card.id)
-        game.player.deck = temp_deck
+        next_turn_analysis_results = game.analyze_next_turn_outcomes()
 
-        top_outcomes = game.analyze_next_turn_outcomes()
-
-        return jsonify(top_outcomes)
+        return jsonify({
+            "game_state_after_actions": game_state_after_actions_dict,
+            "next_turn_analysis": next_turn_analysis_results
+        }), 200
 
     except Exception as e:
-        print(f"Error in /analyze: {e}")
+        # print(f"Error in /api/execute_actions_and_analyze: {e}") # Server-side log
+        import traceback
+        traceback.print_exc() # Server-side log
+        return jsonify({"error": "An internal server error occurred during action execution/analysis", "details": str(e)}), 500
+
+
+@app.route('/api/advance_turn_and_analyze', methods=['POST'])
+def advance_turn_and_analyze_route():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
+        current_game_state_dict = data.get('current_game_state')
+        if not current_game_state_dict:
+            return jsonify({"error": "Missing current_game_state"}), 400
+
+        # 1. Rehydrate GameState from current_game_state_dict
+        game = GameState(initial_state_dict=current_game_state_dict)
+        # print(f"DEBUG advance_turn: Rehydrated GameState: Turn {game.turn}, Energy {game.player.energy_current}")
+
+        # 2. Call GameState.advance_to_next_turn()
+        game.advance_to_next_turn() # Increments turn, draws card, resets energy
+        # print(f"DEBUG advance_turn: Advanced to Turn {game.turn}. New energy: {game.player.energy_current}")
+
+
+        # Serialize new_turn_game_state (state after advancing)
+        new_turn_game_state_dict = {
+            "turn": game.turn,
+            "current_energy": game.player.energy_current,
+            "max_energy": game.player.energy_max,
+            "hand_ids": [card.id for card in game.player.hand],
+            "deck_ids": [card.id for card in game.player.deck],
+            "deck_size": len(game.player.deck),
+            "discard_ids": [card.id for card in game.player.discard_pile],
+            "locations": [[card.id for card in loc] for loc in game.locations],
+            "play_history_ids": [card.id for card in game.play_history]
+        }
+        # print(f"DEBUG advance_turn: New turn game state: {new_turn_game_state_dict}")
+
+
+        # 3. Call analyze_next_turn_outcomes() for this new turn.
+        # print(f"DEBUG advance_turn: Calling analyze_next_turn_outcomes for newly advanced Turn {game.turn}")
+        current_turn_analysis_results = game.analyze_next_turn_outcomes()
+        # print(f"DEBUG advance_turn: Analysis for current new turn: {current_turn_analysis_results}")
+
+
+        return jsonify({
+            "new_turn_game_state": new_turn_game_state_dict,
+            "current_turn_analysis": current_turn_analysis_results
+        }), 200
+
+    except Exception as e:
+        # print(f"Error in /api/advance_turn_and_analyze: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"error": "An internal server error occurred", "details": str(e)}), 500
+        return jsonify({"error": "An internal server error occurred during turn advancement/analysis", "details": str(e)}), 500
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False) # debug=False for production/testing without auto-reload issues
+    app.run(host='0.0.0.0', port=5001, debug=True)
