@@ -34,3 +34,40 @@ class Player:
         return (f"Mão ({len(self.hand)}): {self.hand}\n"
                 f"Baralho ({len(self.deck)}): {len(self.deck)} cartas restantes\n"
                 f"Descarte ({len(self.discard_pile)}): {self.discard_pile}")
+
+    def find_card_in_hand(self, card_id: int) -> Optional[Card]:
+        """Encontra uma carta na mão pelo seu ID."""
+        for card in self.hand:
+            if card.id == card_id:
+                return card
+        return None
+
+    def play_card(self, card_id: int) -> Optional[Card]:
+        """
+        Tenta jogar uma carta da mão. Verifica se há energia suficiente.
+        Se for bem-sucedido, remove a carta da mão e retorna o objeto Card.
+        """
+        card_to_play = self.find_card_in_hand(card_id)
+        if not card_to_play:
+            print(f"ERRO: Carta com ID {card_id} não encontrada na mão.")
+            return None
+
+        if self.energy_current >= card_to_play.cost:
+            self.energy_current -= card_to_play.cost
+            self.hand.remove(card_to_play)
+            print(f"JOGADA: {card_to_play.name} jogado(a).")
+            return card_to_play
+        else:
+            print(f"ERRO: Energia insuficiente para jogar {card_to_play.name}. Requer {card_to_play.cost}, disponível {self.energy_current}.")
+            return None
+
+    def move_card_to_discard(self, card_to_discard: Card):
+        """
+        Move uma carta específica da mão para a pilha de descarte.
+        """
+        if card_to_discard in self.hand:
+            self.hand.remove(card_to_discard)
+            self.discard_pile.append(card_to_discard)
+            print(f"DESCARTE: {card_to_discard.name} movido(a) para o descarte.")
+        else:
+            print(f"AVISO: Tentativa de descartar {card_to_discard.name}, que não está na mão.")

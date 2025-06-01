@@ -37,10 +37,28 @@ class GameState:
         self.player.energy_max = self.turn
         self.player.energy_current = self.turn
 
+    def play_card(self, card_id: int, location_index: int):
+        """
+        Lida com a ação de um jogador de jogar uma carta em um local.
+        """
+        # Validação do índice do local
+        if not 0 <= location_index < len(self.locations):
+            print(f"ERRO: Local inválido: {location_index}. Escolha entre 0, 1 ou 2.")
+            return
+
+        played_card = self.player.play_card(card_id)
+
+        if played_card:
+            self.locations[location_index].append(played_card)
+            # Nota do Maestro: Futuramente, este é o local onde a lógica
+            # para ativar as habilidades "Ao Revelar" será invocada.
+            # Por agora, apenas colocamos a carta no campo.
+
     def __repr__(self) -> str:
         """
         Representação textual completa do estado do jogo.
         """
         header = f"====== ESTADO DO JOGO | TURNO {self.turn} | ENERGIA: {self.player.energy_current}/{self.player.energy_max} ======"
         player_state = str(self.player)
-        return f"{header}\n{player_state}\n"
+        locations_state = f"Locais: {self.locations}" # Adicionar esta linha
+        return f"{header}\n{player_state}\n{locations_state}\n" # Modificar esta linha
