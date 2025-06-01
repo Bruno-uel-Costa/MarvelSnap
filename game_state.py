@@ -15,8 +15,9 @@ class GameState:
         # Por enquanto, representaremos os 3 locais como listas de cartas.
         # Mais tarde, isso pode se tornar uma classe 'Location' mais complexa.
         self.locations: List[List] = [[], [], []]
-        self.resolution_queue = [] # Add this line
-        self.simulation_mode = False # Add this flag
+        self.resolution_queue = []
+        self.simulation_mode = False
+        self.play_history: List['Card'] = [] # Histórico de cartas jogadas
 
     def start_game(self):
         """
@@ -140,43 +141,93 @@ class GameState:
             print("Nenhuma jogada legal possível neste turno.")
             return []
 
-        all_outcomes_data = []
-        for move in possible_moves:
-            current_move_outcomes = []
-            for _ in range(num_iterations):
-                game_copy = copy.deepcopy(self)
-                game_copy.simulation_mode = True # Set flag for silent abilities
-                # Pass the simulation_mode to play_card
-                played_card_instance_copy = game_copy.player.play_card(move['card_id'], simulation_mode=game_copy.simulation_mode)
-                if played_card_instance_copy:
-                    game_copy.locations[move['location_index']].append(played_card_instance_copy)
-                    if hasattr(played_card_instance_copy, 'ability_function') and callable(played_card_instance_copy.ability_function):
-                        game_copy.resolution_queue.append((played_card_instance_copy.ability_function, played_card_instance_copy))
-                game_copy.process_resolution_queue() # process_resolution_queue needs to respect simulation_mode for abilities
-                final_powers_tuple = tuple(sum(c.power for c in loc) for loc in game_copy.locations)
-                current_move_outcomes.append(final_powers_tuple)
-            all_outcomes_data.append({'move': move, 'outcomes': current_move_outcomes})
+        all_outcomes_data = [] # This list will store groups of outcomes, whether analytical or simulated
 
-        # Agrega e calcula as probabilidades (as per prompt)
+        # Create a temporary lookup for card objects in hand by ID
+        cards_in_hand_map = {card.id: card for card in self.player.hand}
+
+        for move in possible_moves:
+            card_to_check = cards_in_hand_map.get(move['card_id'])
+
+            if not card_to_check:
+                # print(f"ANALYZE_ERROR: Card with ID {move['card_id']} not found in hand map during hybrid check.")
+                continue # Skip this move if card instance can't be found
+
+            if not card_to_check.is_complex_rng:
+                # --- Analytical Path ---
+                # print(f"ANALYZE_INFO: Using ANALYTICAL path for card {card_to_check.name} (ID: {move['card_id']}).")
+                analytical_results = self.calculate_analytical_outcome(move)
+
+                move_specific_outcomes_list = []
+                for analytical_res_item in analytical_results:
+                    if analytical_res_item['probability'] == 1.0:
+                        move_specific_outcomes_list.append(analytical_res_item['outcome'])
+
+                if move_specific_outcomes_list:
+                    all_outcomes_data.append({
+                        'move': move,
+                        'outcomes': move_specific_outcomes_list,
+                        'is_analytical': True,
+                        'num_iterations_equivalent': 1
+                    })
+
+            else:
+                # --- Monte Carlo Path (existing logic) ---
+                # print(f"ANALYZE_INFO: Using MONTE CARLO path for card {card_to_check.name} (ID: {move['card_id']}).")
+                current_move_monte_carlo_outcomes = []
+                for _ in range(num_iterations):
+                    game_copy = copy.deepcopy(self)
+                    game_copy.simulation_mode = True # Ensure simulation mode for all operations on game_copy
+
+                    # Pass the simulation_mode to play_card
+                    played_card_instance_copy = game_copy.player.play_card(move['card_id'], simulation_mode=game_copy.simulation_mode)
+
+                    if played_card_instance_copy:
+                        game_copy.locations[move['location_index']].append(played_card_instance_copy)
+                        if hasattr(played_card_instance_copy, 'ability_function') and callable(played_card_instance_copy.ability_function):
+                            game_copy.resolution_queue.append((played_card_instance_copy.ability_function, played_card_instance_copy))
+
+                        game_copy.process_resolution_queue()
+                        game_copy.play_history.append(played_card_instance_copy)
+                    else:
+                        pass
+
+                    if hasattr(game_copy, 'calculate_location_power'):
+                        final_powers_tuple = tuple(game_copy.calculate_location_power(i, game_copy.locations) for i in range(len(game_copy.locations)))
+                    else:
+                        final_powers_tuple = tuple(sum(c.power for c in loc) for loc in game_copy.locations)
+                    current_move_monte_carlo_outcomes.append(final_powers_tuple)
+
+                if current_move_monte_carlo_outcomes:
+                    all_outcomes_data.append({
+                        'move': move,
+                        'outcomes': current_move_monte_carlo_outcomes,
+                        'is_analytical': False,
+                        'num_iterations_equivalent': num_iterations
+                    })
+
+        # --- Aggregation Logic (handles mixed analytical/Monte Carlo inputs) ---
         final_results = {}
-        # total_simulations = len(possible_moves) * num_iterations # Not used in prompt's final calc
 
         for result_group in all_outcomes_data:
-            # Using card_name from possible_moves if available, else card_id
             move_card_name = result_group['move'].get('card_name', f"ID:{result_group['move']['card_id']}")
             move_str = f"Jogar {move_card_name} no L{result_group['move']['location_index']}"
+
+            num_trials_for_this_move = len(result_group['outcomes'])
+
+            if num_trials_for_this_move == 0: continue
+
             outcome_counts = Counter(result_group['outcomes'])
 
             for outcome, count in outcome_counts.items():
                 if outcome not in final_results:
                     final_results[outcome] = {'probability': 0, 'actions': set()}
 
-                prob_from_this_move = count / num_iterations # P(Outcome | This Specific Move)
-                # This is P(Outcome) = Sum_M [ P(Outcome | M) * P(M) ] where P(M) = 1/len(possible_moves)
+                prob_from_this_move = count / num_trials_for_this_move
+
                 final_results[outcome]['probability'] += prob_from_this_move / len(possible_moves)
                 final_results[outcome]['actions'].add(move_str)
 
-        # Formata e ordena os resultados finais (as per prompt)
         sorted_outcomes = sorted(
             [
                 # Takes the first action encountered that can lead to this outcome.
@@ -187,3 +238,99 @@ class GameState:
             reverse=True
         )
         return sorted_outcomes[:10]
+
+    def calculate_analytical_outcome(self, move_details: dict) -> list:
+        """
+        Calculates the deterministic outcome of a simple move.
+        move_details is expected to be like {'card_id': card_id, 'location_index': loc_idx, 'card_name': name}
+        Returns a list containing a single outcome dictionary: [{'outcome': (L0,L1,L2), 'probability': 1.0}]
+        """
+        game_copy = copy.deepcopy(self)
+        # Ensure the copy also operates in simulation mode if the original was, or set explicitly if needed.
+        # For analytical outcomes triggered from analyze_next_turn_outcomes, self (original game) IS NOT in simulation_mode.
+        # The game_copy made here should be for this specific analytical path, so its prints should be silenced.
+        game_copy.simulation_mode = True
+
+
+        card_id_to_play = move_details['card_id']
+        location_to_play = move_details['location_index']
+
+        # Execute the play on the copy
+        # Player.play_card handles energy, hand removal, and returns the card instance
+        played_card_instance = game_copy.player.play_card(card_id_to_play, simulation_mode=game_copy.simulation_mode)
+
+        if not played_card_instance:
+            # This should ideally not happen if possible_moves filters correctly.
+            # This move path leads to no valid board change.
+            # The calling function `analyze_next_turn_outcomes` will need to handle or filter out empty results.
+            # print(f"ANALYTICAL_ERROR: Card ID {card_id_to_play} could not be played from hand in analytical calculation.")
+            return []
+
+
+        # Add card to location
+        game_copy.locations[location_to_play].append(played_card_instance)
+
+        # Add its ability to the resolution queue and process it
+        if hasattr(played_card_instance, 'ability_function') and callable(played_card_instance.ability_function):
+            game_copy.resolution_queue.append((played_card_instance.ability_function, played_card_instance))
+
+        game_copy.process_resolution_queue() # Process deterministic abilities
+
+        # Add to play_history
+        game_copy.play_history.append(played_card_instance)
+
+
+        # Calculate final powers
+        # Using calculate_location_power
+        if hasattr(game_copy, 'calculate_location_power'):
+             final_powers_tuple = tuple(game_copy.calculate_location_power(i, game_copy.locations) for i in range(len(game_copy.locations)))
+        else:
+            # Fallback to simple sum if calculate_location_power is not yet implemented
+            # print("ANALYTICAL_NOTE: Using simple power sum as calculate_location_power is not yet implemented.")
+            final_powers_tuple = tuple(sum(c.power for c in loc) for loc in game_copy.locations)
+
+
+        return [{'outcome': final_powers_tuple, 'probability': 1.0}]
+
+    def calculate_location_power(self, location_index: int, all_locations_cards: list) -> int:
+        """
+        Calculates the total power of cards in a specific location.
+        Includes dynamic power calculation for Gorr.
+        'all_locations_cards' is the full list of lists of cards, e.g., self.locations or a copy.
+        """
+        if not (0 <= location_index < len(all_locations_cards)):
+            # print(f"CALC_POWER_ERROR: Invalid location_index {location_index}")
+            return 0
+
+        current_location_cards = all_locations_cards[location_index]
+        total_power = 0
+
+        # Check for Gorr and calculate his power first if he's in this location
+        gorr_present_in_location = None
+        for card_instance in current_location_cards:
+            if card_instance.name == "Gorr":
+                gorr_present_in_location = card_instance
+                break # Found Gorr
+
+        gorr_dynamic_power = 0
+        if gorr_present_in_location:
+            on_reveal_count = 0
+            for loc_list in all_locations_cards: # Iterate through all cards in all locations
+                for card_in_any_loc in loc_list:
+                    # Accessing is_on_reveal attribute which should be set from deck_database
+                    if hasattr(card_in_any_loc, 'is_on_reveal') and card_in_any_loc.is_on_reveal:
+                        # Gorr should not count himself if he were mistakenly tagged as on_reveal
+                        if card_in_any_loc.name != "Gorr": # Make sure Gorr doesn't count himself
+                             on_reveal_count += 1
+
+            gorr_dynamic_power = -1 + (2 * on_reveal_count) # Gorr's base power is -1
+            # print(f"GORR_DEBUG: Gorr found. On-reveal count: {on_reveal_count}. Gorr dynamic power: {gorr_dynamic_power}")
+
+        # Sum powers of cards in the current location
+        for card_instance in current_location_cards:
+            if card_instance.name == "Gorr":
+                total_power += gorr_dynamic_power
+            else:
+                total_power += card_instance.power
+
+        return total_power

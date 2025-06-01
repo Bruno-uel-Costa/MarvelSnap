@@ -210,3 +210,69 @@ def ability_odin(game_state, card): # 'card' is the Odin instance
     else:
         if not game_state.simulation_mode:
             print(f"ERRO ODIN: Não foi possível encontrar o local da carta Odin ({card.name}).")
+
+def ability_blink(game_state, card): # 'card' is the Blink instance
+    """
+    On Reveal: Swap the last card you played with a card that costs more from your deck.
+    """
+    if not game_state.play_history:
+        if not game_state.simulation_mode:
+            print("BLINK: Play history is empty. Blink's ability fizzles.")
+        return
+
+    target_card_played_instance = game_state.play_history[-1]
+
+    if not game_state.simulation_mode:
+        print(f"BLINK: Targeting {target_card_played_instance.name} (last card in play history).")
+
+    target_location_list = None
+    target_location_index = -1
+    original_index_in_location = -1
+
+    for i, loc_list in enumerate(game_state.locations):
+        if target_card_played_instance in loc_list:
+            target_location_list = loc_list
+            target_location_index = i
+            original_index_in_location = loc_list.index(target_card_played_instance)
+            break
+
+    if target_location_list is None:
+        if not game_state.simulation_mode:
+            print(f"BLINK: Target card {target_card_played_instance.name} not found in any location (perhaps already moved?). Ability fizzles.")
+        return
+
+    eligible_deck_cards = [c for c in game_state.player.deck if c.cost > target_card_played_instance.cost]
+
+    if not eligible_deck_cards:
+        if not game_state.simulation_mode:
+            print(f"BLINK: No card found in deck costing more than {target_card_played_instance.name} (Cost: {target_card_played_instance.cost}). Ability fizzles.")
+        return
+
+    card_from_deck = random.choice(eligible_deck_cards)
+    if not game_state.simulation_mode:
+        print(f"BLINK: Selected {card_from_deck.name} (Cost: {card_from_deck.cost}) from deck to swap with {target_card_played_instance.name}.")
+
+    target_location_list.remove(target_card_played_instance)
+    if not game_state.simulation_mode:
+        print(f"BLINK: Removed {target_card_played_instance.name} from location {target_location_index}.")
+
+    game_state.player.deck.remove(card_from_deck)
+    if not game_state.simulation_mode:
+        print(f"BLINK: Removed {card_from_deck.name} from deck.")
+
+    if original_index_in_location != -1 and original_index_in_location <= len(target_location_list): # Use <= to allow insert at end
+         target_location_list.insert(original_index_in_location, card_from_deck)
+    else:
+        target_location_list.append(card_from_deck)
+    if not game_state.simulation_mode:
+        print(f"BLINK: Added {card_from_deck.name} to location {target_location_index}.")
+
+    if hasattr(card_from_deck, 'ability_function') and callable(card_from_deck.ability_function):
+        game_state.resolution_queue.insert(0, (card_from_deck.ability_function, card_from_deck))
+        if not game_state.simulation_mode:
+            print(f"BLINK: Queued ability of {card_from_deck.name}.")
+
+    game_state.player.deck.append(target_card_played_instance)
+    random.shuffle(game_state.player.deck)
+    if not game_state.simulation_mode:
+        print(f"BLINK: Returned {target_card_played_instance.name} to deck and shuffled.")

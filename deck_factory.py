@@ -11,7 +11,8 @@ from abilities import (
     ability_ghost_rider,
     ability_gambit,  # Add this
     ability_hela,    # Add this
-    ability_odin     # Add this
+    ability_odin,    # Add this
+    ability_blink    # Added Blink's ability
 )
 
 # Mapeamento de nomes de cartas para suas funções de habilidade
@@ -23,6 +24,7 @@ ABILITY_MAPPING = {
     "Gambit": ability_gambit,  # Add this
     "Hela": ability_hela,      # Add this
     "Odin": ability_odin,      # Add this
+    "Blink": ability_blink,    # Added Blink to mapping
     # Outras cartas como Blink, Legion, Gorr, Infinity Ultron, The Infinaut
     # continuarão usando ability_placeholder por enquanto.
 }
