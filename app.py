@@ -1,5 +1,6 @@
 # app.py
 from flask import Flask, request, jsonify # Ensure 'request' is imported
+from flask_cors import CORS # Add this line
 import sys
 import os
 
@@ -13,6 +14,7 @@ from game_state import GameState
 from deck_factory import create_card_from_prepared_data, PREPARED_CARDS_BY_ID, get_prepared_card_definitions
 
 app = Flask(__name__)
+CORS(app) # Add this line to enable CORS for all routes and origins by default
 
 # Ensure card definitions are loaded when app starts, if not already by deck_factory module import
 if PREPARED_CARDS_BY_ID is None:
@@ -112,7 +114,7 @@ def execute_actions_and_analyze_route():
 
         return jsonify({
             "game_state_after_actions": game_state_after_actions_dict,
-            "next_turn_analysis": next_turn_analysis_results
+            "next_turn_analysis": { "top_10_outcomes": next_turn_analysis_results } # Modified line
         }), 200
 
     except Exception as e:
@@ -129,9 +131,9 @@ def advance_turn_and_analyze_route():
         if not data:
             return jsonify({"error": "Invalid JSON payload"}), 400
 
-        current_game_state_dict = data.get('current_game_state')
+        current_game_state_dict = data.get('current_game_state_at_turn_end') # Modified key
         if not current_game_state_dict:
-            return jsonify({"error": "Missing current_game_state"}), 400
+            return jsonify({"error": "Missing current_game_state_at_turn_end"}), 400
 
         # 1. Rehydrate GameState from current_game_state_dict
         game = GameState(initial_state_dict=current_game_state_dict)
@@ -173,6 +175,36 @@ def advance_turn_and_analyze_route():
         import traceback
         traceback.print_exc()
         return jsonify({"error": "An internal server error occurred during turn advancement/analysis", "details": str(e)}), 500
+
+
+@app.route('/api/get_next_turn_analysis', methods=['POST'])
+def get_next_turn_analysis_route():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
+        current_game_state_dict = data.get('current_game_state')
+        if not current_game_state_dict:
+            return jsonify({"error": "Missing current_game_state"}), 400
+
+        # Rehydrate GameState
+        game = GameState(initial_state_dict=current_game_state_dict)
+        # print(f"DEBUG get_next_turn_analysis: Rehydrated GameState: Turn {game.turn}, Energy {game.player.energy_current}")
+
+        # Call analyze_next_turn_outcomes()
+        analysis_results = game.analyze_next_turn_outcomes()
+        # print(f"DEBUG get_next_turn_analysis: Analysis results: {analysis_results}")
+
+        return jsonify({
+            "top_10_outcomes": analysis_results
+        }), 200
+
+    except Exception as e:
+        # print(f"Error in /api/get_next_turn_analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "An internal server error occurred during analysis", "details": str(e)}), 500
 
 
 if __name__ == '__main__':
