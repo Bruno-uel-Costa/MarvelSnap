@@ -69,6 +69,8 @@ def execute_actions_and_analyze_route():
         # print(f"EXEC_ACTIONS: Hand: {[c.name for c in game.player.hand if c]}, Deck: {len(game.player.deck)} cards")
         # print(f"EXEC_ACTIONS: Actions: {player_actions}, Resolved RNG: {resolved_random_outcomes}")
 
+        played_cards_this_api_call = [] # Store cards played from hand this turn
+
         for action in player_actions:
             if action.get('type') == 'PLAY_CARD':
                 card_id_to_play = action.get('card_id')
@@ -86,8 +88,10 @@ def execute_actions_and_analyze_route():
                         game.locations[location_idx_to_play].append(played_card_instance)
                         if hasattr(played_card_instance, 'ability_function') and callable(played_card_instance.ability_function):
                             game.resolution_queue.append((played_card_instance.ability_function, played_card_instance))
-                        game.play_history.append(played_card_instance)
-                        # print(f"EXEC_ACTIONS_INFO: Played {played_card_instance.name} to loc {location_idx_to_play}")
+
+                        # Add to a temporary list, not directly to game.play_history yet
+                        played_cards_this_api_call.append(played_card_instance)
+                        # print(f"EXEC_ACTIONS_INFO: Staged {played_card_instance.name} for play history.")
                     # else:
                         # print(f"EXEC_ACTIONS_ERROR: Invalid location index {location_idx_to_play} for card {played_card_instance.name}")
                         # This case should ideally be prevented by frontend or result in a client error.
@@ -97,7 +101,13 @@ def execute_actions_and_analyze_route():
                     # print(f"EXEC_ACTIONS_INFO: Play card ID {card_id_to_play} failed (player.play_card handles its own logging).")
                     pass
 
+        # Process the resolution queue for all abilities triggered by cards played this turn
         game.process_resolution_queue(resolved_outcomes_for_turn=resolved_random_outcomes)
+
+        # NOW, after all effects from this turn's plays have resolved, update the official play_history
+        for card_obj in played_cards_this_api_call:
+            game.play_history.append(card_obj)
+        # print(f"DEBUG execute_actions: Final play history for turn: {[c.name for c in game.play_history]}")
 
         game_state_after_actions_dict = {
             "turn": game.turn,

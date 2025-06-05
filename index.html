@@ -339,15 +339,16 @@ async function promptForRNG(cardData) {
 
         const card_id_for_rng = cardData.id;
         let requiresInput = false;
+        modalInputsContainer.innerHTML = ''; // Clear previous inputs
 
         if (cardData.name === "Corvus Glaive") {
             requiresInput = true;
             modalTitle.textContent = `Corvus Glaive - Escolha os Descartados`;
             modalPrompt.textContent = "Quais 2 cartas Corvus Glaive descartou da sua mão?";
             modalInputsContainer.innerHTML = `
-                <label>Carta 1 Descartada:</label> <select id="corvusDiscard1" class="mb-2">${populateHandOptions(card_id_for_rng)}</select>
-                <label>Carta 2 Descartada:</label> <select id="corvusDiscard2">${populateHandOptions(card_id_for_rng)}</select>
-            `;
+                <label>Carta 1 Descartada:</label> <select id="corvusDiscard1" style="display: block; width: 95%; padding: 0.5em; margin-bottom: 0.5em; border: 1px solid #ccc; border-radius: 4px;">${populateHandOptions(card_id_for_rng)}</select>
+                <label>Carta 2 Descartada:</label> <select id="corvusDiscard2" style="display: block; width: 95%; padding: 0.5em; margin-bottom: 0.5em; border: 1px solid #ccc; border-radius: 4px;">${populateHandOptions(card_id_for_rng)}</select>
+            `; // Adapted styling
             modalSubmitButton.onclick = () => {
                 const discard1 = document.getElementById('corvusDiscard1').value;
                 const discard2 = document.getElementById('corvusDiscard2').value;
@@ -357,9 +358,12 @@ async function promptForRNG(cardData) {
                 } else if (discard1 === "" && discard2 === "") {
                      userInputModal.style.display = 'none';
                      resolveModalPromise({ source_card_id: card_id_for_rng, outcome_type: "CORVUS_DISCARD", discarded_ids: [] });
-                } else if (discard1 && discard2 === "") {
+                } else if (discard1 && discard2 === "" && discard1 !== "") { // Ensure discard1 has a value if only one is chosen
                      userInputModal.style.display = 'none';
                      resolveModalPromise({ source_card_id: card_id_for_rng, outcome_type: "CORVUS_DISCARD", discarded_ids: [parseInt(discard1)] });
+                } else if (discard2 && discard1 === "" && discard2 !== "") { // Ensure discard2 has a value if only one is chosen
+                     userInputModal.style.display = 'none';
+                     resolveModalPromise({ source_card_id: card_id_for_rng, outcome_type: "CORVUS_DISCARD", discarded_ids: [parseInt(discard2)] });
                 }
                  else {
                     alert("Por favor, selecione cartas válidas (diferentes ou nenhuma/uma se apropriado).");
@@ -370,9 +374,9 @@ async function promptForRNG(cardData) {
             modalTitle.textContent = `Infinity Ultron - Pedras Geradas`;
             modalPrompt.textContent = "Quais 2 Pedras do Infinito o Ultron gerou?";
             modalInputsContainer.innerHTML = `
-                <label>Pedra 1:</label> <select id="ultronStone1" class="mb-2">${populateStoneOptions()}</select>
-                <label>Pedra 2:</label> <select id="ultronStone2">${populateStoneOptions()}</select>
-            `;
+                <label>Pedra 1:</label> <select id="ultronStone1" style="display: block; width: 95%; padding: 0.5em; margin-bottom: 0.5em; border: 1px solid #ccc; border-radius: 4px;">${populateStoneOptions()}</select>
+                <label>Pedra 2:</label> <select id="ultronStone2" style="display: block; width: 95%; padding: 0.5em; margin-bottom: 0.5em; border: 1px solid #ccc; border-radius: 4px;">${populateStoneOptions()}</select>
+            `; // Adapted styling
             modalSubmitButton.onclick = () => {
                 const stone1 = document.getElementById('ultronStone1').value;
                 const stone2 = document.getElementById('ultronStone2').value;
@@ -393,7 +397,7 @@ async function promptForRNG(cardData) {
              modalTitle.textContent = `${cardData.name} - Resultado do Efeito`;
              modalPrompt.textContent = promptText;
              if (sourceZoneIds && sourceZoneIds.length > 0) {
-                modalInputsContainer.innerHTML = `<label>Carta Resultante:</label> <select id="effectCard">${populateSpecificCardOptions(sourceZoneIds)}</select>`;
+                modalInputsContainer.innerHTML = `<label>Carta Resultante:</label> <select id="effectCard" style="display: block; width: 95%; padding: 0.5em; margin-bottom: 0.5em; border: 1px solid #ccc; border-radius: 4px;">${populateSpecificCardOptions(sourceZoneIds)}</select>`; // Adapted styling
              } else {
                 modalInputsContainer.innerHTML = `<p>Nenhuma carta elegível na zona de origem.</p>`;
              }
@@ -414,6 +418,95 @@ async function promptForRNG(cardData) {
                     alert("Por favor, selecione uma carta.");
                 }
              };
+        } else if (cardData.name === "Gambit") {
+            requiresInput = true;
+            modalTitle.textContent = `Gambit - Escolha o Descarte`;
+            modalPrompt.textContent = "Qual carta o Gambit descartou da sua mão?";
+            modalInputsContainer.innerHTML = `
+                <label>Carta Descartada:</label> <select id="gambitDiscardChoice" style="display: block; width: 95%; padding: 0.5em; margin-bottom: 0.5em; border: 1px solid #ccc; border-radius: 4px;">${populateHandOptions(null)}</select>
+            `; // Adapted styling
+            modalSubmitButton.onclick = () => {
+                const discardedCardId = document.getElementById('gambitDiscardChoice').value;
+                if (discardedCardId) {
+                    userInputModal.style.display = 'none';
+                    resolveModalPromise({
+                        source_card_id: card_id_for_rng,
+                        outcome_type: "GAMBIT_DISCARD",
+                        discarded_card_id: parseInt(discardedCardId)
+                    });
+                } else {
+                    alert("Por favor, selecione a carta descartada.");
+                }
+            };
+        } else if (cardData.name === "Hela") { // NEW HELA BLOCK
+            requiresInput = true;
+            modalTitle.textContent = `Hela - Escolha as Ressurreições`;
+            modalPrompt.textContent = "Para cada custo único na pilha de descarte, selecione UMA carta para Hela ressuscitar (opcional por custo):";
+
+            const discardPileCards = (currentGameState.discard_ids || []).map(id => cardManifest[id]).filter(Boolean);
+            const cardsByCost = {};
+            discardPileCards.forEach(card => {
+                if (!cardsByCost[card.cost]) {
+                    cardsByCost[card.cost] = [];
+                }
+                cardsByCost[card.cost].push(card);
+            });
+
+            const uniqueCosts = Object.keys(cardsByCost).sort((a, b) => parseInt(a) - parseInt(b));
+
+            if (uniqueCosts.length === 0) {
+                alert("Pilha de descarte está vazia. Hela não ressuscitará nada.");
+                if (resolveModalPromise) resolveModalPromise(null);
+                else resolve(null);
+                return;
+            }
+
+            let inputsHTML = "";
+            uniqueCosts.forEach(cost => {
+                inputsHTML += `<label style="display: block; margin-top: 0.5em; margin-bottom: 0.2em; font-weight: bold;">Custo ${cost}:</label>`;
+                inputsHTML += `<select id="helaChoiceCost${cost}" style="display: block; width: 95%; padding: 0.5em; margin-bottom: 0.5em; border: 1px solid #ccc; border-radius: 4px;">`;
+                inputsHTML += `<option value="">-- Não ressuscitar para Custo ${cost} --</option>`;
+                cardsByCost[cost].forEach(cardInCost => {
+                    inputsHTML += `<option value="${cardInCost.id}">${cardInCost.name} (P:${cardInCost.power})</option>`;
+                });
+                inputsHTML += `</select>`;
+            });
+            modalInputsContainer.innerHTML = inputsHTML;
+
+            modalSubmitButton.onclick = () => {
+                const choicesByCost = {};
+                let actualSelectionsCount = 0;
+
+                uniqueCosts.forEach(cost => {
+                    const selectElement = document.getElementById(`helaChoiceCost${cost}`);
+                    const selectedId = selectElement.value;
+                    if (selectedId) {
+                        choicesByCost[cost.toString()] = parseInt(selectedId);
+                        actualSelectionsCount++;
+                    }
+                });
+
+                if (actualSelectionsCount === 0 && uniqueCosts.length > 0) {
+                    if (!confirm("Nenhuma carta selecionada para Hela. Continuar (Hela não fará nada)?")) {
+                         return;
+                    }
+                }
+
+                userInputModal.style.display = 'none';
+                if (resolveModalPromise) { // Check if resolveModalPromise is set
+                    resolveModalPromise({
+                        source_card_id: card_id_for_rng,
+                        outcome_type: "HELA_RESURRECTIONS",
+                        choices_by_cost: choicesByCost
+                    });
+                } else { // Fallback, though resolveModalPromise should be set if requiresInput is true
+                     resolve({
+                        source_card_id: card_id_for_rng,
+                        outcome_type: "HELA_RESURRECTIONS",
+                        choices_by_cost: choicesByCost
+                    });
+                }
+            };
         }
 
         if(requiresInput) {
