@@ -48,6 +48,9 @@
         #currentTurnActionsList { list-style-type: none; padding-left: 0; }
         #currentTurnActionsList li { background-color: #f0f0f0; padding: 5px; margin-bottom: 3px; border-radius: 3px; display: flex; justify-content: space-between; align-items: center;}
 
+      .score-positive { color: #28a745; font-weight: bold; } /* Verde para vantagem */
+      .score-negative { color: #dc3545; font-weight: bold; } /* Vermelho para desvantagem */
+      .score-neutral { color: #6c757d; font-weight: bold; }  /* Cinza para neutralidade */
     </style>
 </head>
 <body>
@@ -509,25 +512,27 @@ function displayAnalysisResults(analysisData) {
 
     const ul = document.createElement('ul');
     ul.classList.add('list-disc', 'pl-5', 'space-y-1');
-    outcomesList.forEach((result, index) => {
+    outcomesList.forEach((resultItem, index) => { // resultItem is like {action: "...", average_score: X.Y}
         const li = document.createElement('li');
         li.classList.add('text-sm', 'p-1');
-        // Format for new structure: {'action': action_str, 'average_score': avg_score}
-        // Old structure was: {'prob': ..., 'outcome': [L0,L1,L2], 'action': ...}
-        if (result.average_score !== undefined) { // New structure
-            li.innerHTML = `
-                <span class="font-semibold">${index + 1}. Ação: ${result.action}</span><br>
-                Pontuação Média Esperada: <span class="font-mono text-blue-600">${result.average_score.toFixed(2)}</span>`;
-        } else if (result.prob !== undefined && result.outcome) { // Old structure (fallback, if any API still returns it)
-            const probPercent = (result.prob * 100).toFixed(2);
-            const outcomeStr = `L0: ${result.outcome[0]}, L1: ${result.outcome[1]}, L2: ${result.outcome[2]}`;
-            li.innerHTML = `
-                <span class="font-semibold">${index + 1}. Prob: ${probPercent}%</span> |
-                Res: <span class="font-mono text-blue-600">(${outcomeStr})</span> |
-                Ação: <span class="italic text-gray-700">${result.action}</span>`;
-        } else {
-            li.textContent = "Resultado em formato desconhecido.";
+
+        const score = resultItem.average_score;
+        const formattedScore = parseFloat(score).toFixed(2);
+        const action = resultItem.action;
+
+        let scoreClass = 'score-neutral'; // Default CSS class
+        if (score > 0.5) {
+            scoreClass = 'score-positive';
+        } else if (score < -0.5) {
+            scoreClass = 'score-negative';
         }
+
+        // Preserving font-semibold for the action part, and font-mono for the score part
+        // The overall structure is slightly adjusted to better fit the new scoring display
+        li.innerHTML = `
+            <span style="font-weight: bold;">${index + 1}. Ação: ${action}</span><br>
+            Pontuação Média Esperada: <span class="${scoreClass}" style="font-family: monospace;">${formattedScore}</span>
+        `;
         ul.appendChild(li);
     });
     resultsOutputDiv.appendChild(ul);
