@@ -58,6 +58,7 @@ def execute_actions_and_analyze_route():
         current_game_state_dict = data.get('current_game_state')
         player_actions = data.get('player_actions', [])
         resolved_random_outcomes = data.get('resolved_random_outcomes', [])
+        opponent_powers = data.get('opponent_powers', [0, 0, 0]) # Added opponent_powers extraction
 
         if not current_game_state_dict:
             return jsonify({"error": "Missing current_game_state"}), 400
@@ -110,7 +111,7 @@ def execute_actions_and_analyze_route():
             "play_history_ids": [card.id for card in game.play_history]
         }
 
-        next_turn_analysis_results = game.analyze_next_turn_outcomes()
+        next_turn_analysis_results = game.analyze_next_turn_outcomes(opponent_powers=opponent_powers) # Pass opponent_powers
 
         return jsonify({
             "game_state_after_actions": game_state_after_actions_dict,
@@ -132,6 +133,7 @@ def advance_turn_and_analyze_route():
             return jsonify({"error": "Invalid JSON payload"}), 400
 
         current_game_state_dict = data.get('current_game_state_at_turn_end') # Modified key
+        opponent_powers = data.get('opponent_powers', [0, 0, 0]) # Added opponent_powers extraction
         if not current_game_state_dict:
             return jsonify({"error": "Missing current_game_state_at_turn_end"}), 400
 
@@ -161,7 +163,7 @@ def advance_turn_and_analyze_route():
 
         # 3. Call analyze_next_turn_outcomes() for this new turn.
         # print(f"DEBUG advance_turn: Calling analyze_next_turn_outcomes for newly advanced Turn {game.turn}")
-        current_turn_analysis_results = game.analyze_next_turn_outcomes()
+        current_turn_analysis_results = game.analyze_next_turn_outcomes(opponent_powers=opponent_powers) # Pass opponent_powers
         # print(f"DEBUG advance_turn: Analysis for current new turn: {current_turn_analysis_results}")
 
 
@@ -185,6 +187,7 @@ def get_next_turn_analysis_route():
             return jsonify({"error": "Invalid JSON payload"}), 400
 
         current_game_state_dict = data.get('current_game_state')
+        opponent_powers = data.get('opponent_powers', [0, 0, 0]) # Added opponent_powers extraction
         if not current_game_state_dict:
             return jsonify({"error": "Missing current_game_state"}), 400
 
@@ -193,7 +196,7 @@ def get_next_turn_analysis_route():
         # print(f"DEBUG get_next_turn_analysis: Rehydrated GameState: Turn {game.turn}, Energy {game.player.energy_current}")
 
         # Call analyze_next_turn_outcomes()
-        analysis_results = game.analyze_next_turn_outcomes()
+        analysis_results = game.analyze_next_turn_outcomes(opponent_powers=opponent_powers) # Pass opponent_powers
         # print(f"DEBUG get_next_turn_analysis: Analysis results: {analysis_results}")
 
         return jsonify({

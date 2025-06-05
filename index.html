@@ -7,274 +7,638 @@
     <style>
         body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; }
         .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        h1, h2 { color: #333; }
+        h1, h2 { color: #333; text-align: center; }
+        h3 { color: #555; }
         .zone { border: 1px solid #ccc; padding: 10px; margin-bottom: 15px; border-radius: 4px; background-color: #fafafa; }
         .zone h3 { margin-top: 0; }
-        .zone select, .zone input[type="number"], .zone button { margin-right: 5px; padding: 8px; border-radius: 4px; border: 1px solid #ddd; }
-        .zone button { background-color: #5cb85c; color: white; cursor: pointer; }
-        .zone button:hover { background-color: #4cae4c; }
-        .zone .card-list { min-height: 20px; background-color: #eee; padding: 5px; border-radius: 3px; }
-        .zone .card-item { background-color: #fff; border: 1px solid #ddd; padding: 3px 6px; margin: 3px; display: inline-block; border-radius: 3px; font-size: 0.9em; }
+        .zone button { margin-right: 5px; padding: 8px; border-radius: 4px; border: 1px solid #ddd; background-color: #e9e9e9; cursor: pointer; }
+        .zone button:hover { background-color: #dcdcdc; }
+        .zone .card-list { min-height: 30px; background-color: #eee; padding: 5px; border-radius: 3px; display: flex; flex-wrap: wrap; gap: 5px; }
+        .zone .card-item { background-color: #fff; border: 1px solid #ddd; padding: 3px 6px; margin: 0; display: inline-flex; align-items: center; border-radius: 3px; font-size: 0.9em; }
+        .card-item button { padding: 2px 5px; font-size: 0.8em; line-height: 1; background-color: #ffdddd; margin-left: 5px;}
+        .card-item button:hover { background-color: #ffcccc;}
+
         #resultsArea { margin-top: 20px; padding: 10px; border: 1px solid #ccc; background-color: #e9efff; border-radius: 4px; }
         #resultsArea h3 { margin-top: 0; }
-        #analyzeButton { padding: 10px 15px; font-size: 1.1em; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        #analyzeButton:hover { background-color: #0056b3; }
-        .game-parameters input[type="number"] { width: 60px; }
-        hr { margin: 20px 0; }
+        .game-parameters, .opponent-powers-container, .card-selection-area { margin-bottom: 15px; padding: 10px; background-color: #f9f9f9; border-radius: 4px; border: 1px solid #eee;}
+        .game-parameters div, .opponent-powers-container div { margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .game-parameters label, .opponent-powers-container label { margin-right: 10px; }
+        .game-parameters input[type="number"], .opponent-powers-container input[type="number"], .card-selection-area input[type="text"] {
+            padding: 8px; border-radius: 4px; border: 1px solid #ddd; width: 80px;
+        }
+        .card-selection-area input[type="text"] { width: auto; }
+
+        .main-controls button { padding: 10px 15px; font-size: 1.1em; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        .main-controls button:hover { background-color: #0056b3; }
+        .main-controls { text-align: center; margin-top: 20px; margin-bottom:20px; }
+        hr { margin: 25px 0; border: 0; border-top: 1px solid #eee; }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
+        .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 500px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .modal-content h3 { margin-top: 0; }
+        .modal-content label { display: block; margin-top: 10px; }
+        .modal-content select, .modal-content input { width: calc(100% - 20px); padding: 10px; margin-top: 5px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        .modal-buttons { text-align: right; margin-top: 20px; }
+        .modal-buttons button { padding: 10px 15px; border-radius: 4px; cursor: pointer; border: none; margin-left:10px;}
+        #modalSubmitButton { background-color: #5cb85c; color: white; }
+        #modalCancelButton { background-color: #aaa; color: white; }
+
+        #loadingIndicator { display: none; text-align: center; margin: 20px; font-weight: bold; color: #007bff; }
+        #currentTurnActionsList { list-style-type: none; padding-left: 0; }
+        #currentTurnActionsList li { background-color: #f0f0f0; padding: 5px; margin-bottom: 3px; border-radius: 3px; display: flex; justify-content: space-between; align-items: center;}
+
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Marvel Snap - Análise Tática de Turno</h1>
 
-        <h2>Configurar Estado do Jogo:</h2>
-
-        <div class="game-parameters">
-            <label for="currentTurn">Turno Atual:</label>
-            <input type="number" id="currentTurn" value="1" min="1" max="7">
-            <label for="currentEnergy">Energia Atual:</label>
-            <input type="number" id="currentEnergy" value="1" min="0">
-            <label for="maxEnergy">Energia Máxima:</label>
-            <input type="number" id="maxEnergy" value="1" min="0">
+        <div class="main-controls">
+            <button id="startGameButton">Iniciar Novo Jogo / Reiniciar</button>
         </div>
-        <hr>
 
-        <div>
-            <label for="cardSelector">Selecionar Carta (ID):</label>
-            <input type="text" id="cardIdInput" placeholder="Ex: 1 (Blade)">
+        <div id="loadingIndicator">Carregando...</div>
+
+        <div id="gameBoard" style="display:none;">
+            <h2>Estado Atual do Jogo:</h2>
+            <div class="game-parameters">
+                <div><label>Turno:</label> <span id="currentTurnDisplay">N/A</span></div>
+                <div><label>Energia Atual:</label> <span id="currentEnergyDisplay">N/A</span></div>
+                <div><label>Energia Máxima:</label> <span id="maxEnergyDisplay">N/A</span></div>
+                <div><label>Cartas no Baralho:</label> <span id="deckSizeDisplay">N/A</span></div>
+            </div>
+
+            <div class="opponent-powers-container">
+                <h3>Poder Final do Oponente (Estimado):</h3>
+                <div style="display: flex; justify-content: space-around;">
+                    <div>
+                        <label for="opponent-power-0">Local 1:</label>
+                        <input type="number" id="opponent-power-0" value="0" style="width: 60px; padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+                    </div>
+                    <div>
+                        <label for="opponent-power-1">Local 2:</label>
+                        <input type="number" id="opponent-power-1" value="0" style="width: 60px; padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+                    </div>
+                    <div>
+                        <label for="opponent-power-2">Local 3:</label>
+                        <input type="number" id="opponent-power-2" value="0" style="width: 60px; padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+                    </div>
+                </div>
+            </div>
+            <hr>
+
+            <h3>Mão (<span id="handCount">0</span>):</h3>
+            <div class="zone card-list" id="handCardList"></div>
+
+            <h3>Locais:</h3>
+            <div style="display: flex; justify-content: space-between;">
+                <div class="zone" style="flex-basis: 32%;">
+                    <h3>Local 1 (<span id="location0Count">0</span>):</h3>
+                    <div class="card-list" id="location0CardList"></div>
+                </div>
+                <div class="zone" style="flex-basis: 32%;">
+                    <h3>Local 2 (<span id="location1Count">0</span>):</h3>
+                    <div class="card-list" id="location1CardList"></div>
+                </div>
+                <div class="zone" style="flex-basis: 32%;">
+                    <h3>Local 3 (<span id="location2Count">0</span>):</h3>
+                    <div class="card-list" id="location2CardList"></div>
+                </div>
+            </div>
+
+            <h3>Descarte (<span id="discardCount">0</span>):</h3>
+            <div class="zone card-list" id="discardCardList"></div>
+            <hr>
+
+            <h3>Ações para o Turno Atual:</h3>
+            <ul id="currentTurnActionsList"></ul>
+
+            <div class="main-controls">
+                <button id="executeTurnButton">Executar Ações & Analisar Próximo Turno</button>
+                <button id="endTurnButton">Finalizar Turno & Analisar (Sem Mais Ações)</button>
+            </div>
         </div>
-        <br>
-
-        <div id="zonesContainer">
-            <div class="zone" id="handZone">
-                <h3>Mão (<span id="handCount">0</span>)</h3>
-                <button onclick="addCardToZone('hand')">Adicionar à Mão</button>
-                <div class="card-list" id="handCardList"></div>
-            </div>
-
-            <div class="zone" id="location1Zone">
-                <h3>Local 1 (<span id="location1Count">0</span>)</h3>
-                <button onclick="addCardToZone('location1')">Adicionar ao Local 1</button>
-                <div class="card-list" id="location1CardList"></div>
-            </div>
-
-            <div class="zone" id="location2Zone">
-                <h3>Local 2 (<span id="location2Count">0</span>)</h3>
-                <button onclick="addCardToZone('location2')">Adicionar ao Local 2</button>
-                <div class="card-list" id="location2CardList"></div>
-            </div>
-
-            <div class="zone" id="location3Zone">
-                <h3>Local 3 (<span id="location3Count">0</span>)</h3>
-                <button onclick="addCardToZone('location3')">Adicionar ao Local 3</button>
-                <div class="card-list" id="location3CardList"></div>
-            </div>
-
-            <div class="zone" id="discardZone">
-                <h3>Descarte (<span id="discardCount">0</span>)</h3>
-                <button onclick="addCardToZone('discard')">Adicionar ao Descarte</button>
-                <div class="card-list" id="discardCardList"></div>
-            </div>
-        </div>
-        <hr>
-
-        <button id="analyzeButton">Analisar Turno (Estado Atual)</button>
 
         <div id="resultsArea">
             <h3>Resultados da Análise:</h3>
             <div id="analysisResultsOutput">
-                <p>Configure o estado do jogo e clique em "Analisar Turno".</p>
+                <p>Inicie um novo jogo ou configure o estado para ver a análise.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Input do Usuário (RNG) -->
+    <div id="userInputModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle">Resolver Efeito Aleatório</h3>
+            <p id="modalPrompt">Selecione o resultado:</p>
+            <div id="modalInputsContainer">
+                <!-- Inputs dinâmicos aqui -->
+            </div>
+            <div class="modal-buttons">
+                <button id="modalCancelButton">Cancelar / Usar RNG</button>
+                <button id="modalSubmitButton">Confirmar</button>
             </div>
         </div>
     </div>
 
     <script>
-// script.js (embedded in index.html for this subtask)
+// script.js
 
-// --- Local Game State ---
-const localGameState = {
-    hand_ids: [],
-    discard_ids: [],
-    location1_ids: [],
-    location2_ids: [],
-    location3_ids: [],
-    // Deck IDs are not explicitly managed on this simplified frontend.
-    // The backend will know the full deck from start_game and then we'll tell it
-    // which cards are in hand/discard/locations for rehydration.
-    // Play history is also managed by backend primarily.
-};
+const API_BASE_URL = 'http://127.0.0.1:5001'; // Define base URL for API
 
-// --- Card Data (for display purposes) ---
-const cardManifest = {
-    1: { name: 'Blade' }, 2: { name: 'Gambit' }, 3: { name: 'Corvus Glaive' },
-    4: { name: 'Jubilee' }, 5: { name: 'Ghost Rider' }, 6: { name: 'Blink' },
-    7: { name: 'Legion' }, 8: { name: 'Infinity Ultron' }, 9: { name: 'Gorr' },
-    10: { name: 'Hela' }, 11: { name: 'Odin' }, 12: { name: 'The Infinaut' },
-    101: { name: 'Mind Stone' }, 102: { name: 'Power Stone' }, 103: { name: 'Reality Stone' },
-    104: { name: 'Soul Stone' }, 105: { name: 'Space Stone' }, 106: { name: 'Time Stone' }
-};
+const FULL_DECK_DATA = [
+    {'id': 1, 'name': 'Blade', 'cost': 1, 'power': 3, 'is_complex_rng': false, 'is_on_reveal': true, 'ability_text':'On Reveal: Discard the rightmost card from your hand.'},
+    {'id': 2, 'name': 'Gambit', 'cost': 3, 'power': 3, 'is_complex_rng': true, 'is_on_reveal': true, 'ability_text':'On Reveal: Discard a card from your hand to destroy a random enemy card.'},
+    {'id': 3, 'name': 'Corvus Glaive', 'cost': 3, 'power': 5, 'is_complex_rng': true, 'is_on_reveal': true, 'ability_text':'On Reveal: Discard 2 cards from your hand to get +1 Max Energy.'},
+    {'id': 4, 'name': 'Jubilee', 'cost': 4, 'power': 1, 'is_complex_rng': true, 'is_on_reveal': true, 'ability_text':'On Reveal: Add the top card of your deck to this location.'},
+    {'id': 5, 'name': 'Ghost Rider', 'cost': 4, 'power': 3, 'is_complex_rng': true, 'is_on_reveal': true, 'ability_text':'On Reveal: Bring back one of your discarded cards to this location.'},
+    {'id': 6, 'name': 'Blink', 'cost': 5, 'power': 7, 'is_complex_rng': true, 'is_on_reveal': true, 'ability_text':'On Reveal: Swap the last card you played with a card that costs more from your deck.'},
+    {'id': 7, 'name': 'Legion', 'cost': 5, 'power': 7, 'is_complex_rng': false, 'is_on_reveal': true, 'ability_text':'On Reveal: Replace each other location with this one.'},
+    {'id': 8, 'name': 'Infinity Ultron', 'cost': 5, 'power': 8, 'is_complex_rng': true, 'is_on_reveal': true, 'ability_text':"On Reveal: Add 2 of Ultron’s Stones to your hand."},
+    {'id': 9, 'name': 'Gorr', 'cost': 6, 'power': -1, 'is_complex_rng': false, 'is_on_reveal': false, 'ability_text':'Ongoing: +2 Power for EACH On Reveal card in play.'},
+    {'id': 10, 'name': 'Hela', 'cost': 6, 'power': 6, 'is_complex_rng': true, 'is_on_reveal': true, 'ability_text':'On Reveal: For each different Cost among them, resurrect a card you discarded to a random location.'},
+    {'id': 11, 'name': 'Odin', 'cost': 6, 'power': 8, 'is_complex_rng': true, 'is_on_reveal': true, 'ability_text':'On Reveal: Repeat the On Reveal abilities of your other cards here.'},
+    {'id': 12, 'name': 'The Infinaut', 'cost': 6, 'power': 20, 'is_complex_rng': false, 'is_on_reveal': false, 'ability_text':'If you played a card last turn, you can’t play this.'},
+];
 
-// --- UI Update Functions ---
-function getZoneName(zoneId) {
-    if (zoneId === 'hand') return 'Mão';
-    if (zoneId === 'location1') return 'Local 1';
-    if (zoneId === 'location2') return 'Local 2';
-    if (zoneId === 'location3') return 'Local 3';
-    if (zoneId === 'discard') return 'Descarte';
-    return 'Zone';
+const ULTRON_STONES_DATA = [
+    { id: 101, name: 'Mind Stone', cost: 1, power: 1, 'ability_text': 'Stone: Draws a card.' },
+    { id: 102, name: 'Power Stone', cost: 1, power: 3, 'ability_text': 'Stone: +1 Power to other cards here.' },
+    { id: 103, name: 'Reality Stone', cost: 1, power: 1, 'ability_text': 'Stone: Transforms this location.' },
+    { id: 104, name: 'Soul Stone', cost: 1, power: 1, 'ability_text': 'Stone: Afflicts enemy cards here with -1 Power.' },
+    { id: 105, name: 'Space Stone', cost: 1, power: 1, 'ability_text': 'Stone: Next turn you can move a card to this location.' },
+    { id: 106, name: 'Time Stone', cost: 1, power: 1, 'ability_text': 'Stone: Next turn you get +1 Energy.' }
+];
+
+const cardManifest = FULL_DECK_DATA.concat(ULTRON_STONES_DATA).reduce((acc, card) => {
+    acc[card.id] = card;
+    return acc;
+}, {});
+
+let currentGameState = null;
+let selectedCardForPlay = null;
+let currentTurnActions = [];
+let resolvedRandomOutcomesForTurn = [];
+
+let startGameButton, gameBoardDiv, handCardListDiv, locationDivs = [], discardCardListDiv;
+let analysisResultsOutputDiv, currentTurnDisplay, currentEnergyDisplay, maxEnergyDisplay, deckSizeDisplay;
+let executeTurnButton, endTurnButton, currentTurnActionsListUL, loadingIndicator;
+let userInputModal, modalTitle, modalPrompt, modalInputsContainer, modalSubmitButton, modalCancelButton;
+let resolveModalPromise = null;
+
+function initializeDOMElements() {
+    startGameButton = document.getElementById('startGameButton');
+    gameBoardDiv = document.getElementById('gameBoard');
+    handCardListDiv = document.getElementById('handCardList');
+    locationDivs = [
+        document.getElementById('location0CardList'),
+        document.getElementById('location1CardList'),
+        document.getElementById('location2CardList')
+    ];
+    discardCardListDiv = document.getElementById('discardCardList');
+    analysisResultsOutputDiv = document.getElementById('analysisResultsOutput');
+    currentTurnDisplay = document.getElementById('currentTurnDisplay');
+    currentEnergyDisplay = document.getElementById('currentEnergyDisplay');
+    maxEnergyDisplay = document.getElementById('maxEnergyDisplay');
+    deckSizeDisplay = document.getElementById('deckSizeDisplay');
+    executeTurnButton = document.getElementById('executeTurnButton');
+    endTurnButton = document.getElementById('endTurnButton');
+    currentTurnActionsListUL = document.getElementById('currentTurnActionsList');
+    loadingIndicator = document.getElementById('loadingIndicator');
+    userInputModal = document.getElementById('userInputModal');
+    modalTitle = document.getElementById('modalTitle');
+    modalPrompt = document.getElementById('modalPrompt');
+    modalInputsContainer = document.getElementById('modalInputsContainer');
+    modalSubmitButton = document.getElementById('modalSubmitButton');
+    modalCancelButton = document.getElementById('modalCancelButton');
 }
 
-function renderZone(zoneId) {
-    const cardListDiv = document.getElementById(`${zoneId}CardList`);
-    const countSpan = document.getElementById(`${zoneId}Count`);
-    if (!cardListDiv || !countSpan) return;
+function renderGameState() {
+    if (!currentGameState || !gameBoardDiv) {
+        if(gameBoardDiv) gameBoardDiv.style.display = 'none';
+        return;
+    }
+    gameBoardDiv.style.display = 'block';
+    currentTurnDisplay.textContent = currentGameState.turn;
+    currentEnergyDisplay.textContent = currentGameState.current_energy;
+    maxEnergyDisplay.textContent = currentGameState.max_energy;
+    deckSizeDisplay.textContent = currentGameState.deck_ids ? currentGameState.deck_ids.length : currentGameState.deck_size;
 
-    cardListDiv.innerHTML = '';
-    const ids_key = `${zoneId}_ids`;
+    renderZoneCards(handCardListDiv, currentGameState.hand_ids || [], 'hand');
+    for(let i = 0; i < 3; i++) {
+        if (locationDivs[i]) renderZoneCards(locationDivs[i], currentGameState.locations[i] || [], 'location', i);
+        if (document.getElementById(`location${i}Count`)) document.getElementById(`location${i}Count`).textContent = (currentGameState.locations[i] || []).length;
+    }
+    renderZoneCards(discardCardListDiv, currentGameState.discard_ids || [], 'discard');
 
-    localGameState[ids_key].forEach((cardId, index) => {
-        const cardName = cardManifest[cardId] ? cardManifest[cardId].name : `ID Desconhecido: ${cardId}`;
-        const cardItem = document.createElement('span');
-        cardItem.className = 'card-item';
-        cardItem.textContent = cardName;
+    if (document.getElementById('handCount')) document.getElementById('handCount').textContent = (currentGameState.hand_ids || []).length;
+    if (document.getElementById('discardCount')) document.getElementById('discardCount').textContent = (currentGameState.discard_ids || []).length;
 
-        const removeButton = document.createElement('button');
-        removeButton.textContent = 'x';
-        removeButton.style.marginLeft = '5px';
-        removeButton.style.cursor = 'pointer';
-        removeButton.onclick = () => removeCardFromZone(zoneId, index);
-        cardItem.appendChild(removeButton);
+    renderCurrentTurnActions();
+}
 
-        cardListDiv.appendChild(cardItem);
+function renderZoneCards(zoneDiv, cardIds, zoneType, locationIndex = -1) {
+    if (!zoneDiv) return;
+    zoneDiv.innerHTML = '';
+    (cardIds || []).forEach(id => {
+        const cardData = cardManifest[id] || { name: `ID ${id}`, cost: '?', power: '?' };
+        const cardDiv = document.createElement('div');
+        cardDiv.classList.add('card-item');
+        cardDiv.textContent = `${cardData.name} (C:${cardData.cost} P:${cardData.power})`;
+        if (zoneType === 'hand') {
+            cardDiv.onclick = () => selectCardForPlay(cardData);
+        }
+        zoneDiv.appendChild(cardDiv);
     });
-    countSpan.textContent = localGameState[ids_key].length;
 }
 
-function addCardToZone(zoneId) {
-    const cardIdInput = document.getElementById('cardIdInput');
-    const cardId = parseInt(cardIdInput.value);
-
-    if (isNaN(cardId) || !cardManifest[cardId]) {
-        alert('Por favor, insira um ID de carta válido.');
-        return;
-    }
-
-    const ids_key = `${zoneId}_ids`;
-    const zoneName = getZoneName(zoneId);
-
-    if (zoneId.startsWith('location') && localGameState[ids_key].length >= 4) {
-        alert(`O ${zoneName} já tem 4 cartas.`);
-        return;
-    }
-
-    localGameState[ids_key].push(cardId);
-    renderZone(zoneId);
-    cardIdInput.value = '';
+function renderCurrentTurnActions() {
+    if (!currentTurnActionsListUL) return;
+    currentTurnActionsListUL.innerHTML = '';
+    currentTurnActions.forEach((action, index) => {
+        const cardData = cardManifest[action.card_id];
+        const li = document.createElement('li');
+        li.textContent = `Jogar ${cardData.name} no Local ${action.location_index + 1}`;
+        const removeActionBtn = document.createElement('button');
+        removeActionBtn.textContent = 'X';
+        removeActionBtn.onclick = () => {
+            currentTurnActions.splice(index, 1);
+            resolvedRandomOutcomesForTurn = resolvedRandomOutcomesForTurn.filter(r => r.action_index !== index).map(r => {
+                if (r.action_index > index) r.action_index--;
+                return r;
+            });
+            renderCurrentTurnActions();
+        };
+        li.appendChild(removeActionBtn);
+        currentTurnActionsListUL.appendChild(li);
+    });
 }
 
-function removeCardFromZone(zoneId, cardIndexInZone) {
-    const ids_key = `${zoneId}_ids`;
-    if (cardIndexInZone >= 0 && cardIndexInZone < localGameState[ids_key].length) {
-        localGameState[ids_key].splice(cardIndexInZone, 1);
-        renderZone(zoneId);
-    }
-}
-
-// --- Event Listener for Analyze Button ---
-// This button will now use the /api/get_next_turn_analysis endpoint.
-// Other buttons for /api/start_game etc. would be added if needed by UI flow.
-document.getElementById('analyzeButton').addEventListener('click', async () => {
-    const resultsOutputDiv = document.getElementById('analysisResultsOutput');
-    resultsOutputDiv.innerHTML = '<p>Analisando... Por favor, aguarde.</p>';
-
-    const currentTurn = parseInt(document.getElementById('currentTurn').value);
-    const currentEnergy = parseInt(document.getElementById('currentEnergy').value);
-    const maxEnergy = parseInt(document.getElementById('maxEnergy').value);
-
-    if (isNaN(currentTurn) || isNaN(currentEnergy) || isNaN(maxEnergy)) {
-        resultsOutputDiv.innerHTML = '<p style="color: red;">Erro: Turno ou Energia inválidos.</p>';
+function selectCardForPlay(cardData) {
+    if (!currentGameState || cardData.cost > currentGameState.current_energy - calculateStagedEnergyCost()) {
+        alert(`Energia insuficiente para selecionar ${cardData.name}.`);
         return;
     }
+    selectedCardForPlay = cardData;
+    alert(`${selectedCardForPlay.name} selecionado. Clique em um local para adicioná-lo à fila de ações.`);
+    highlightValidLocationTargets(true);
+}
 
-    // Construct the current_game_state payload based on UI inputs
-    const current_game_state_payload = {
-        turn: currentTurn,
-        current_energy: currentEnergy,
-        max_energy: maxEnergy,
-        hand_ids: localGameState.hand_ids,
-        discard_ids: localGameState.discard_ids,
-        // Deck IDs are not sent from this basic UI; backend GameState will have its own default
-        // and then filter it based on known cards in hand/discard/locations when rehydrating.
-        // For /api/get_next_turn_analysis, the backend needs a complete deck_ids list to be accurate.
-        // This is a known simplification in this UI. For accurate analysis, deck state is crucial.
-        // We will let the backend initialize its default deck and then filter.
-        deck_ids: [], // Sending empty, backend will use its default then filter.
-                      // Or, for more accuracy, UI would need to manage/send deck state.
-        locations: [
-            localGameState.location1_ids,
-            localGameState.location2_ids,
-            localGameState.location3_ids
-        ],
-        play_history_ids: [] // Play history is primarily managed by backend logic based on actions.
-                             // For a simple "analyze current state", it might be empty or provided if relevant.
-    };
+function calculateStagedEnergyCost() {
+    return currentTurnActions.reduce((sum, action) => sum + (cardManifest[action.card_id]?.cost || 0), 0);
+}
 
-    const payload = {
-        current_game_state: current_game_state_payload
-        // 'player_actions' and 'resolved_random_outcomes' are not needed for get_next_turn_analysis
-    };
+function highlightValidLocationTargets(enable) {
+    locationDivs.forEach((locDiv, index) => {
+        if (!locDiv || !currentGameState) return;
+        if (enable && selectedCardForPlay && (currentGameState.locations[index] || []).length < 4) {
+            locDiv.classList.add('valid-target');
+            locDiv.onclick = () => attemptPlayToLocation(index);
+        } else {
+            locDiv.classList.remove('valid-target');
+            locDiv.onclick = null;
+        }
+    });
+}
 
-    try {
-        // MODIFIED FETCH URL
-        const response = await fetch('http://127.0.0.1:5001/api/get_next_turn_analysis', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-        });
+window.attemptPlayToLocation = async function(locationIndex) {
+    if (!selectedCardForPlay || !currentGameState) return;
+    if ((currentGameState.locations[locationIndex] || []).length >= 4) {
+        alert(`Local ${locationIndex + 1} está cheio.`);
+        return;
+    }
+    const action = { type: "PLAY_CARD", card_id: selectedCardForPlay.id, location_index: locationIndex };
+    const rngOutcome = await promptForRNG(selectedCardForPlay);
 
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ detail: "Erro desconhecido ao processar resposta do servidor." }));
-            throw new Error(`Erro do servidor: ${response.status} ${response.statusText}. Detalhes: ${errorData.detail || 'N/A'}`);
+    if (rngOutcome === 'cancel') {
+        selectedCardForPlay = null;
+        highlightValidLocationTargets(false);
+        return;
+    }
+    if(rngOutcome) {
+         resolvedRandomOutcomesForTurn.push({ ...rngOutcome, action_index: currentTurnActions.length });
+    }
+    currentTurnActions.push(action);
+    renderCurrentTurnActions();
+    selectedCardForPlay = null;
+    highlightValidLocationTargets(false);
+}
+
+async function promptForRNG(cardData) {
+    return new Promise(resolve => {
+        if (!userInputModal || !modalTitle || !modalPrompt || !modalInputsContainer || !modalSubmitButton || !modalCancelButton) {
+            console.error("Modal elements not found!");
+            resolve(null);
+            return;
         }
 
-        const resultsData = await response.json();
-        // The endpoint /api/get_next_turn_analysis returns { "top_10_outcomes": [...] }
-        displayResults(resultsData.top_10_outcomes);
+        const card_id_for_rng = cardData.id;
+        let requiresInput = false;
 
-    } catch (error) {
-        console.error('Erro ao analisar turno:', error);
-        resultsOutputDiv.innerHTML = `<p style="color: red;">Falha ao buscar análise: ${error.message}</p>`;
+        if (cardData.name === "Corvus Glaive") {
+            requiresInput = true;
+            modalTitle.textContent = `Corvus Glaive - Escolha os Descartados`;
+            modalPrompt.textContent = "Quais 2 cartas Corvus Glaive descartou da sua mão?";
+            modalInputsContainer.innerHTML = `
+                <label>Carta 1 Descartada:</label> <select id="corvusDiscard1" class="mb-2">${populateHandOptions(card_id_for_rng)}</select>
+                <label>Carta 2 Descartada:</label> <select id="corvusDiscard2">${populateHandOptions(card_id_for_rng)}</select>
+            `;
+            modalSubmitButton.onclick = () => {
+                const discard1 = document.getElementById('corvusDiscard1').value;
+                const discard2 = document.getElementById('corvusDiscard2').value;
+                if (discard1 && discard2 && discard1 !== discard2) {
+                    userInputModal.style.display = 'none';
+                    resolveModalPromise({ source_card_id: card_id_for_rng, outcome_type: "CORVUS_DISCARD", discarded_ids: [parseInt(discard1), parseInt(discard2)] });
+                } else if (discard1 === "" && discard2 === "") {
+                     userInputModal.style.display = 'none';
+                     resolveModalPromise({ source_card_id: card_id_for_rng, outcome_type: "CORVUS_DISCARD", discarded_ids: [] });
+                } else if (discard1 && discard2 === "") {
+                     userInputModal.style.display = 'none';
+                     resolveModalPromise({ source_card_id: card_id_for_rng, outcome_type: "CORVUS_DISCARD", discarded_ids: [parseInt(discard1)] });
+                }
+                 else {
+                    alert("Por favor, selecione cartas válidas (diferentes ou nenhuma/uma se apropriado).");
+                }
+            };
+        } else if (cardData.name === "Infinity Ultron") {
+            requiresInput = true;
+            modalTitle.textContent = `Infinity Ultron - Pedras Geradas`;
+            modalPrompt.textContent = "Quais 2 Pedras do Infinito o Ultron gerou?";
+            modalInputsContainer.innerHTML = `
+                <label>Pedra 1:</label> <select id="ultronStone1" class="mb-2">${populateStoneOptions()}</select>
+                <label>Pedra 2:</label> <select id="ultronStone2">${populateStoneOptions()}</select>
+            `;
+            modalSubmitButton.onclick = () => {
+                const stone1 = document.getElementById('ultronStone1').value;
+                const stone2 = document.getElementById('ultronStone2').value;
+                 if (stone1 && stone2 && stone1 !== stone2) {
+                    userInputModal.style.display = 'none';
+                    resolveModalPromise({ source_card_id: card_id_for_rng, outcome_type: "ULTRON_STONES", generated_stone_ids: [parseInt(stone1), parseInt(stone2)] });
+                } else {
+                    alert("Por favor, selecione duas pedras diferentes.");
+                }
+            };
+        } else if (cardData.name === "Jubilee" || cardData.name === "Ghost Rider") {
+             requiresInput = true;
+             const sourceZoneIds = cardData.name === "Jubilee" ? currentGameState.deck_ids : currentGameState.discard_ids;
+             const promptText = cardData.name === "Jubilee" ?
+                (sourceZoneIds && sourceZoneIds.length > 0 ? "Qual carta a Jubilee puxou do baralho?" : "Baralho vazio, nenhuma carta para Jubilee puxar.") :
+                (sourceZoneIds && sourceZoneIds.length > 0 ? "Qual carta o Ghost Rider ressuscitou do descarte?" : "Pilha de descarte vazia, nenhuma carta para Ghost Rider.");
+
+             modalTitle.textContent = `${cardData.name} - Resultado do Efeito`;
+             modalPrompt.textContent = promptText;
+             if (sourceZoneIds && sourceZoneIds.length > 0) {
+                modalInputsContainer.innerHTML = `<label>Carta Resultante:</label> <select id="effectCard">${populateSpecificCardOptions(sourceZoneIds)}</select>`;
+             } else {
+                modalInputsContainer.innerHTML = `<p>Nenhuma carta elegível na zona de origem.</p>`;
+             }
+             modalSubmitButton.onclick = () => {
+                const effectCardId = sourceZoneIds && sourceZoneIds.length > 0 ? document.getElementById('effectCard').value : null;
+                if(effectCardId){
+                    userInputModal.style.display = 'none';
+                    const outcome_type = cardData.name === "Jubilee" ? "JUBILEE_PULL" : "GHOST_RIDER_CHOICE";
+                    const key_name = cardData.name === "Jubilee" ? "pulled_card_id" : "resurrected_id";
+                    let outcomeData = { source_card_id: card_id_for_rng, outcome_type: outcome_type};
+                    outcomeData[key_name] = parseInt(effectCardId);
+                    resolveModalPromise(outcomeData);
+                } else if (!(sourceZoneIds && sourceZoneIds.length > 0)) {
+                    userInputModal.style.display = 'none';
+                    resolveModalPromise(null);
+                }
+                 else {
+                    alert("Por favor, selecione uma carta.");
+                }
+             };
+        }
+
+        if(requiresInput) {
+            userInputModal.style.display = 'block';
+            resolveModalPromise = value => resolve(value);
+            modalCancelButton.onclick = () => {
+                userInputModal.style.display = 'none';
+                if (resolveModalPromise) resolveModalPromise('cancel');
+            };
+        } else {
+            resolve(null);
+        }
+    });
+}
+
+
+function populateHandOptions(excludeCardId = null) {
+    let options = '<option value="">Nenhuma/Auto</option>';
+    if (currentGameState && currentGameState.hand_ids) {
+        currentGameState.hand_ids.forEach(id => {
+            if (id !== excludeCardId || cardManifest[id]?.name === "Corvus Glaive") {
+                 options += `<option value="${id}">${cardManifest[id] ? cardManifest[id].name : 'ID '+id}</option>`;
+            }
+        });
     }
-});
+    return options;
+}
+function populateStoneOptions() {
+    let options = '<option value="">Selecione...</option>';
+    ULTRON_STONES_DATA.forEach(stone => {
+         options += `<option value="${stone.id}">${stone.name}</option>`;
+    });
+    return options;
+}
+function populateSpecificCardOptions(cardIdList) {
+     let options = '<option value="">Selecione...</option>';
+    if (cardIdList && cardIdList.length > 0) {
+        cardIdList.forEach(id => {
+             options += `<option value="${id}">${cardManifest[id] ? cardManifest[id].name : 'ID '+id}</option>`;
+        });
+    } else {
+        options = '<option value="">Nenhuma carta disponível</option>';
+    }
+    return options;
+}
 
-function displayResults(results) {
-    const resultsOutputDiv = document.getElementById('analysisResultsOutput');
-    resultsOutputDiv.innerHTML = '';
+async function fetchApi(endpoint, method = 'GET', payload = null) {
+    if (loadingIndicator) loadingIndicator.style.display = 'block';
+    if (analysisResultsOutputDiv && method !== 'GET' && endpoint !== '/api/start_game') { // Avoid clearing for start_game initial analysis
+      analysisResultsOutputDiv.innerHTML = '<p>Analisando...</p>';
+    }
 
-    if (!results || results.length === 0) {
-        resultsOutputDiv.innerHTML = '<p>Nenhum resultado de análise retornado ou nenhuma jogada possível.</p>';
+    const fullUrl = API_BASE_URL + endpoint;
+    const options = {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+    };
+    if (payload && method !== 'GET') {
+        options.body = JSON.stringify(payload);
+    }
+
+    try {
+        const response = await fetch(fullUrl, options);
+        if (loadingIndicator) loadingIndicator.style.display = 'none';
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: "Erro desconhecido ao decodificar JSON de erro do servidor."}));
+            throw new Error(errorData.error || `Erro do Servidor: ${response.status} ${response.statusText}. Detalhes: ${errorData.details || 'N/A'}`);
+        }
+        return await response.json();
+    } catch (error) {
+        if (loadingIndicator) loadingIndicator.style.display = 'none';
+        console.error(`Erro em ${method} ${fullUrl}:`, error);
+        if (analysisResultsOutputDiv) analysisResultsOutputDiv.innerHTML = `<p style="color: red;">Erro na comunicação com o servidor: ${error.message}</p>`;
+        return null;
+    }
+}
+
+function displayAnalysisResults(analysisData) {
+    if (!analysisResultsOutputDiv) return;
+    analysisResultsOutputDiv.innerHTML = '';
+
+    let outcomesList;
+    if (analysisData && Array.isArray(analysisData)) {
+        outcomesList = analysisData;
+    } else if (analysisData && analysisData.top_10_outcomes && Array.isArray(analysisData.top_10_outcomes)) {
+        outcomesList = analysisData.top_10_outcomes;
+    } else {
+        analysisResultsOutputDiv.innerHTML = '<p>Nenhum resultado provável encontrado ou formato de dados de análise inesperado.</p>';
+        return;
+    }
+
+    if (outcomesList.length === 0) {
+        analysisResultsOutputDiv.innerHTML = '<p>Nenhum resultado provável encontrado ou nenhuma jogada possível.</p>';
         return;
     }
 
     const ul = document.createElement('ul');
-    results.forEach((result, index) => {
+    ul.classList.add('list-disc', 'pl-5', 'space-y-1');
+    outcomesList.forEach((result, index) => {
         const li = document.createElement('li');
-        const probPercent = (result.prob * 100).toFixed(2);
-        const outcomeStr = `L0: ${result.outcome[0]}, L1: ${result.outcome[1]}, L2: ${result.outcome[2]}`;
-        li.textContent = `${index + 1}. Prob: ${probPercent}% | Resultado: (${outcomeStr}) | Ação Sugerida: ${result.action}`;
+        li.classList.add('text-sm', 'p-1');
+        // Format for new structure: {'action': action_str, 'average_score': avg_score}
+        // Old structure was: {'prob': ..., 'outcome': [L0,L1,L2], 'action': ...}
+        if (result.average_score !== undefined) { // New structure
+            li.innerHTML = `
+                <span class="font-semibold">${index + 1}. Ação: ${result.action}</span><br>
+                Pontuação Média Esperada: <span class="font-mono text-blue-600">${result.average_score.toFixed(2)}</span>`;
+        } else if (result.prob !== undefined && result.outcome) { // Old structure (fallback, if any API still returns it)
+            const probPercent = (result.prob * 100).toFixed(2);
+            const outcomeStr = `L0: ${result.outcome[0]}, L1: ${result.outcome[1]}, L2: ${result.outcome[2]}`;
+            li.innerHTML = `
+                <span class="font-semibold">${index + 1}. Prob: ${probPercent}%</span> |
+                Res: <span class="font-mono text-blue-600">(${outcomeStr})</span> |
+                Ação: <span class="italic text-gray-700">${result.action}</span>`;
+        } else {
+            li.textContent = "Resultado em formato desconhecido.";
+        }
         ul.appendChild(li);
     });
     resultsOutputDiv.appendChild(ul);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    renderZone('hand');
-    renderZone('location1');
-    renderZone('location2');
-    renderZone('location3');
-    renderZone('discard');
+    initializeDOMElements();
+
+    if (startGameButton) {
+        startGameButton.addEventListener('click', async () => {
+            const gameData = await fetchApi('/api/start_game', 'GET');
+            if (gameData) {
+                currentGameState = gameData;
+                currentTurnActions = [];
+                resolvedRandomOutcomesForTurn = [];
+                renderGameState();
+
+                const p0 = parseInt(document.getElementById('opponent-power-0').value, 10) || 0;
+                const p1 = parseInt(document.getElementById('opponent-power-1').value, 10) || 0;
+                const p2 = parseInt(document.getElementById('opponent-power-2').value, 10) || 0;
+                const opponentPowers = [p0, p1, p2];
+
+                const initialAnalysisPayload = {
+                    current_game_state: currentGameState,
+                    opponent_powers: opponentPowers
+                };
+                const analysisResult = await fetchApi('/api/get_next_turn_analysis', 'POST', initialAnalysisPayload);
+                if (analysisResult) displayAnalysisResults(analysisResult);
+            }
+        });
+    }
+
+    if (executeTurnButton) {
+        executeTurnButton.addEventListener('click', async () => {
+            if (!currentGameState) {
+                alert("Inicie um jogo primeiro.");
+                return;
+            }
+            if (currentTurnActions.length === 0) {
+                alert("Nenhuma ação para executar neste turno.");
+                return;
+            }
+
+            const p0 = parseInt(document.getElementById('opponent-power-0').value, 10) || 0;
+            const p1 = parseInt(document.getElementById('opponent-power-1').value, 10) || 0;
+            const p2 = parseInt(document.getElementById('opponent-power-2').value, 10) || 0;
+            const opponentPowers = [p0, p1, p2];
+
+            const payload = {
+                current_game_state: currentGameState,
+                player_actions: currentTurnActions,
+                resolved_random_outcomes: resolvedRandomOutcomesForTurn,
+                opponent_powers: opponentPowers
+            };
+            const result = await fetchApi('/api/execute_actions_and_analyze', 'POST', payload);
+            if (result && result.game_state_after_actions && result.next_turn_analysis) {
+                currentGameState = result.game_state_after_actions;
+                renderGameState();
+                displayAnalysisResults(result.next_turn_analysis);
+                currentTurnActions = [];
+                resolvedRandomOutcomesForTurn = [];
+            }
+        });
+    }
+
+    if (endTurnButton) {
+        endTurnButton.addEventListener('click', async () => {
+            if (!currentGameState) {
+                alert("Inicie um jogo primeiro.");
+                return;
+            }
+            if (currentTurnActions.length > 0) {
+                if(!confirm("Você tem ações planejadas que não foram executadas. Deseja finalizar o turno mesmo assim?")){
+                    return;
+                }
+            }
+
+            const p0 = parseInt(document.getElementById('opponent-power-0').value, 10) || 0;
+            const p1 = parseInt(document.getElementById('opponent-power-1').value, 10) || 0;
+            const p2 = parseInt(document.getElementById('opponent-power-2').value, 10) || 0;
+            const opponentPowers = [p0, p1, p2];
+
+            const payload = {
+                current_game_state_at_turn_end: currentGameState,
+                opponent_powers: opponentPowers
+            };
+            const result = await fetchApi('/api/advance_turn_and_analyze', 'POST', payload);
+            if (result && result.new_turn_game_state && result.current_turn_analysis) {
+                currentGameState = result.new_turn_game_state;
+                currentTurnActions = [];
+                resolvedRandomOutcomesForTurn = [];
+                renderGameState();
+                displayAnalysisResults(result.current_turn_analysis);
+            }
+        });
+    }
+
+    if (userInputModal && modalCancelButton) {
+        modalCancelButton.onclick = () => {
+            userInputModal.style.display = 'none';
+            if (resolveModalPromise) resolveModalPromise('cancel');
+        };
+    } else {
+        console.warn("Modal cancel button not found.");
+    }
+
+    if (gameBoardDiv) {
+        gameBoardDiv.style.display = 'none';
+    } else {
+        console.warn("gameBoardDiv not found on DOMContentLoaded. UI might not behave as expected if elements are missing.");
+    }
 });
 
     </script>
