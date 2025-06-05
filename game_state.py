@@ -2,7 +2,7 @@
 import random
 import copy
 from collections import Counter
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Tuple, Optional, Dict, Any, TYPE_CHECKING # Added Tuple
 
 from player import Player
 from deck_factory import create_card_from_prepared_data # Removed create_full_deck as Player handles its own deck init now
@@ -179,9 +179,10 @@ class GameState:
     #
     #     print("\n===== SIMULAÇÃO CONCLUÍDA =====")
 
-    def analyze_next_turn_outcomes(self, num_iterations: int = 1000) -> list:
+    def analyze_next_turn_outcomes(self, opponent_powers: List[int], num_iterations: int = 1000) -> list:
         """
-        Analisa todas as jogadas possíveis para o turno atual e retorna os 10 resultados mais prováveis.
+        Analisa todas as jogadas possíveis para o turno atual, calcula uma pontuação de avaliação
+        contra os poderes do oponente fornecidos, e retorna as jogadas classificadas por pontuação média.
         """
         possible_moves = []
         for card_in_hand in self.player.hand:
@@ -208,33 +209,25 @@ class GameState:
 
             if not card_to_check.is_complex_rng:
                 # --- Analytical Path ---
-                # print(f"ANALYZE_INFO: Using ANALYTICAL path for card {card_to_check.name} (ID: {move['card_id']}).")
-                analytical_results = self.calculate_analytical_outcome(move)
+                analytical_path_scores = self.calculate_analytical_outcome(move, opponent_powers)
 
-                move_specific_outcomes_list = []
-                for analytical_res_item in analytical_results:
-                    if analytical_res_item['probability'] == 1.0:
-                        move_specific_outcomes_list.append(analytical_res_item['outcome'])
-
-                if move_specific_outcomes_list:
+                if analytical_path_scores: # If not empty (i.e., play was valid)
                     all_outcomes_data.append({
                         'move': move,
-                        'outcomes': move_specific_outcomes_list,
-                        'is_analytical': True,
-                        'num_iterations_equivalent': 1
+                        'scores': analytical_path_scores,
+                        'is_analytical': True
                     })
 
             else:
-                # --- Monte Carlo Path (existing logic) ---
-                # print(f"ANALYZE_INFO: Using MONTE CARLO path for card {card_to_check.name} (ID: {move['card_id']}).")
-                current_move_monte_carlo_outcomes = []
+                # --- Monte Carlo Path ---
+                current_move_monte_carlo_scores = []
                 for _ in range(num_iterations):
                     game_copy = copy.deepcopy(self)
-                    game_copy.simulation_mode = True # Ensure simulation mode for all operations on game_copy
+                    game_copy.simulation_mode = True
 
-                    # Pass the simulation_mode to play_card
                     played_card_instance_copy = game_copy.player.play_card(move['card_id'], simulation_mode=game_copy.simulation_mode)
 
+                    final_powers_tuple = None
                     if played_card_instance_copy:
                         game_copy.locations[move['location_index']].append(played_card_instance_copy)
                         if hasattr(played_card_instance_copy, 'ability_function') and callable(played_card_instance_copy.ability_function):
@@ -242,108 +235,95 @@ class GameState:
 
                         game_copy.process_resolution_queue()
                         game_copy.play_history.append(played_card_instance_copy)
-                    else:
-                        pass
 
-                    if hasattr(game_copy, 'calculate_location_power'):
-                        final_powers_tuple = tuple(game_copy.calculate_location_power(i, game_copy.locations) for i in range(len(game_copy.locations)))
+                        # Calculate powers after all effects for this iteration
+                        if hasattr(game_copy, 'calculate_location_power'):
+                            final_powers_tuple = tuple(game_copy.calculate_location_power(i, game_copy.locations) for i in range(len(game_copy.locations)))
+                        else:
+                            final_powers_tuple = tuple(sum(c.power for c in loc) for loc in game_copy.locations)
                     else:
-                        final_powers_tuple = tuple(sum(c.power for c in loc) for loc in game_copy.locations)
-                    current_move_monte_carlo_outcomes.append(final_powers_tuple)
+                        # If card play failed, use current board state for power calculation (likely unchanged or minimally changed)
+                        # Or consider this an invalid path for this iteration (score could be -infinity or skip)
+                        # For now, calculate power on the current (mostly unchanged) game_copy state.
+                        if hasattr(game_copy, 'calculate_location_power'):
+                            final_powers_tuple = tuple(game_copy.calculate_location_power(i, game_copy.locations) for i in range(len(game_copy.locations)))
+                        else:
+                            final_powers_tuple = tuple(sum(c.power for c in loc) for loc in game_copy.locations)
 
-                if current_move_monte_carlo_outcomes:
+                    eval_score = self._calculate_evaluation_score(final_powers_tuple, opponent_powers)
+                    current_move_monte_carlo_scores.append(eval_score)
+
+                if current_move_monte_carlo_scores:
                     all_outcomes_data.append({
                         'move': move,
-                        'outcomes': current_move_monte_carlo_outcomes,
-                        'is_analytical': False,
-                        'num_iterations_equivalent': num_iterations
+                        'scores': current_move_monte_carlo_scores,
+                        'is_analytical': False
                     })
 
-        # --- Aggregation Logic (handles mixed analytical/Monte Carlo inputs) ---
-        final_results = {}
+        # --- New Aggregation and Sorting Logic ---
+        aggregated_move_evaluations = []
 
-        for result_group in all_outcomes_data:
-            move_card_name = result_group['move'].get('card_name', f"ID:{result_group['move']['card_id']}")
-            move_str = f"Jogar {move_card_name} no L{result_group['move']['location_index']}"
+        for move_outcome_group in all_outcomes_data:
+            move_details = move_outcome_group['move']
+            scores_for_this_move = move_outcome_group['scores']
 
-            num_trials_for_this_move = len(result_group['outcomes'])
+            if not scores_for_this_move:
+                continue
 
-            if num_trials_for_this_move == 0: continue
+            average_score_for_move = sum(scores_for_this_move) / len(scores_for_this_move)
 
-            outcome_counts = Counter(result_group['outcomes'])
+            move_card_name = move_details.get('card_name', f"ID:{move_details['card_id']}")
+            action_str = f"Jogar {move_card_name} no L{move_details['location_index']}"
 
-            for outcome, count in outcome_counts.items():
-                if outcome not in final_results:
-                    final_results[outcome] = {'probability': 0, 'actions': set()}
+            aggregated_move_evaluations.append({
+                'action': action_str,
+                'average_score': average_score_for_move
+                # Optionally, could also include:
+                # 'num_simulations': len(scores_for_this_move),
+                # 'is_analytical': move_outcome_group['is_analytical']
+            })
 
-                prob_from_this_move = count / num_trials_for_this_move
-
-                final_results[outcome]['probability'] += prob_from_this_move / len(possible_moves)
-                final_results[outcome]['actions'].add(move_str)
-
-        sorted_outcomes = sorted(
-            [
-                # Takes the first action encountered that can lead to this outcome.
-                {'prob': data['probability'], 'outcome': out, 'action': list(data['actions'])[0] if data['actions'] else "N/A"}
-                for out, data in final_results.items()
-            ],
-            key=lambda x: x['prob'],
+        # Sort the moves by their average_score in descending order
+        sorted_moves_by_score = sorted(
+            aggregated_move_evaluations,
+            key=lambda x: x['average_score'],
             reverse=True
         )
-        return sorted_outcomes[:10]
 
-    def calculate_analytical_outcome(self, move_details: dict) -> list:
+        return sorted_moves_by_score[:10] # Return top 10 best moves by average score
+
+    def calculate_analytical_outcome(self, move_details: dict, opponent_powers_for_eval: List[int]) -> List[int]:
         """
-        Calculates the deterministic outcome of a simple move.
+        Calculates the deterministic outcome of a simple move and returns its evaluation score.
         move_details is expected to be like {'card_id': card_id, 'location_index': loc_idx, 'card_name': name}
-        Returns a list containing a single outcome dictionary: [{'outcome': (L0,L1,L2), 'probability': 1.0}]
+        Returns a list containing a single score, or an empty list if the move is invalid.
         """
         game_copy = copy.deepcopy(self)
-        # Ensure the copy also operates in simulation mode if the original was, or set explicitly if needed.
-        # For analytical outcomes triggered from analyze_next_turn_outcomes, self (original game) IS NOT in simulation_mode.
-        # The game_copy made here should be for this specific analytical path, so its prints should be silenced.
-        game_copy.simulation_mode = True
-
+        game_copy.simulation_mode = True # Ensure silent operations
 
         card_id_to_play = move_details['card_id']
         location_to_play = move_details['location_index']
 
-        # Execute the play on the copy
-        # Player.play_card handles energy, hand removal, and returns the card instance
         played_card_instance = game_copy.player.play_card(card_id_to_play, simulation_mode=game_copy.simulation_mode)
 
         if not played_card_instance:
-            # This should ideally not happen if possible_moves filters correctly.
-            # This move path leads to no valid board change.
-            # The calling function `analyze_next_turn_outcomes` will need to handle or filter out empty results.
-            # print(f"ANALYTICAL_ERROR: Card ID {card_id_to_play} could not be played from hand in analytical calculation.")
-            return []
+            return [] # No score if play failed
 
-
-        # Add card to location
         game_copy.locations[location_to_play].append(played_card_instance)
 
-        # Add its ability to the resolution queue and process it
         if hasattr(played_card_instance, 'ability_function') and callable(played_card_instance.ability_function):
             game_copy.resolution_queue.append((played_card_instance.ability_function, played_card_instance))
 
-        game_copy.process_resolution_queue() # Process deterministic abilities
-
-        # Add to play_history
+        game_copy.process_resolution_queue()
         game_copy.play_history.append(played_card_instance)
 
-
-        # Calculate final powers
-        # Using calculate_location_power
         if hasattr(game_copy, 'calculate_location_power'):
              final_powers_tuple = tuple(game_copy.calculate_location_power(i, game_copy.locations) for i in range(len(game_copy.locations)))
         else:
-            # Fallback to simple sum if calculate_location_power is not yet implemented
-            # print("ANALYTICAL_NOTE: Using simple power sum as calculate_location_power is not yet implemented.")
             final_powers_tuple = tuple(sum(c.power for c in loc) for loc in game_copy.locations)
 
-
-        return [{'outcome': final_powers_tuple, 'probability': 1.0}]
+        eval_score = self._calculate_evaluation_score(final_powers_tuple, opponent_powers_for_eval)
+        return [eval_score] # Return a list containing the single score
 
     def calculate_location_power(self, location_index: int, all_locations_cards: list) -> int:
         """
@@ -387,3 +367,21 @@ class GameState:
                 total_power += card_instance.power
 
         return total_power
+
+    def _calculate_evaluation_score(self, player_final_powers: Tuple[int, int, int], opponent_powers: List[int]) -> int:
+        """
+        Calculates the evaluation score based on the 'Victory Margin'.
+        Score = sum(player_power[i] - opponent_power[i]) for the three locations.
+        """
+        if len(player_final_powers) != 3:
+            # print(f"EVAL_SCORE_ERROR: player_final_powers length is {len(player_final_powers)}, expected 3.")
+            return -999
+        if len(opponent_powers) != 3:
+            # print(f"EVAL_SCORE_ERROR: opponent_powers length is {len(opponent_powers)}, expected 3.")
+            return -999
+
+        victory_margin_score = 0
+        for i in range(3): # Iterate through the three locations
+            victory_margin_score += (player_final_powers[i] - opponent_powers[i])
+
+        return victory_margin_score
